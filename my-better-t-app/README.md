@@ -77,7 +77,7 @@ Successful wallet sign-in opens `/dashboard`. Users can browse their polls and c
 
 The program source is in [`solana/`](./solana/README.md). It enforces one final vote per wallet per poll, immutable choices, deadlines, and creator-only early closure. Polls are open to all wallets; this does not enforce one vote per attendee.
 
-Network and site deployment require operator setup; follow the [hosting guide](../README.md#host-the-project). Until `VITE_SOLANA_PROGRAM_ID` points to a deployed Devnet program, the dashboard shows a setup notice and disables creation. Creators can end voting early or permanently delete open or ended polls after confirming in their wallet. Deleted polls disappear from the app and stop accepting votes; their blockchain history remains public. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits.
+The app targets the deployed Solana Devnet program configured with `VITE_SOLANA_PROGRAM_ID`. A missing program setting shows a setup notice and disables creation. The served client and deployed program must both include deletion support; a Git merge alone does not update a running tunnel checkout. Creators can end voting early or permanently delete open or ended polls after confirming in their wallet. Deleted polls disappear from the app and stop accepting votes; their blockchain history remains public. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits. For full website hosting and operator setup, follow the [hosting guide](../README.md#host-the-project).
 
 Run the web tests with:
 

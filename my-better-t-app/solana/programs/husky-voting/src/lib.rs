@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
-// Development placeholder. `anchor keys sync` replaces this before deployment.
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkgMQHGfXXGY");
+// Current Devnet program; upgrading preserves existing poll addresses.
+declare_id!("BsG7VkCXXtn1p7akwd4AHwRmscqR29XRFL8ZMp6veJRq");
 
 const MAX_OPTIONS: usize = 6;
 const MAX_DURATION: i64 = 30 * 24 * 60 * 60;
@@ -25,13 +25,12 @@ pub mod husky_voting {
             nonce,
             created_at: now,
             closes_at,
-            closed: false,
+            status: PollStatus::Open,
             title,
             description,
             options,
             votes: [0; MAX_OPTIONS],
             bump: ctx.bumps.poll,
-            deleted: false,
         });
         Ok(())
     }
@@ -39,7 +38,7 @@ pub mod husky_voting {
     pub fn cast_vote(ctx: Context<CastVote>, option: u8) -> Result<()> {
         let poll = &mut ctx.accounts.poll;
         require!(
-            !poll.deleted && !poll.closed && Clock::get()?.unix_timestamp < poll.closes_at,
+            poll.status == PollStatus::Open && Clock::get()?.unix_timestamp < poll.closes_at,
             VotingError::PollClosed
         );
         require!(
@@ -59,13 +58,15 @@ pub mod husky_voting {
     }
 
     pub fn close_poll(ctx: Context<ClosePoll>) -> Result<()> {
-        ctx.accounts.poll.closed = true;
+        // Closing an already deleted poll must not make it visible again.
+        if ctx.accounts.poll.status != PollStatus::Deleted {
+            ctx.accounts.poll.status = PollStatus::Closed;
+        }
         Ok(())
     }
 
     pub fn delete_poll(ctx: Context<DeletePoll>) -> Result<()> {
-        ctx.accounts.poll.closed = true;
-        ctx.accounts.poll.deleted = true;
+        ctx.accounts.poll.status = PollStatus::Deleted;
         Ok(())
     }
 }
@@ -144,19 +145,27 @@ pub struct DeletePoll<'info> {
     pub creator: Signer<'info>,
 }
 
+// Borsh encodes these variants in one byte. Open (0) and Closed (1) match
+// the original boolean exactly, so even full-size legacy polls need no realloc.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PollStatus {
+    Open,
+    Closed,
+    Deleted,
+}
+
 #[account]
 pub struct Poll {
     pub creator: Pubkey,
     pub nonce: [u8; 16],
     pub created_at: i64,
     pub closes_at: i64,
-    pub closed: bool,
+    pub status: PollStatus,
     pub title: String,
     pub description: String,
     pub options: Vec<String>,
     pub votes: [u64; MAX_OPTIONS],
     pub bump: u8,
-    pub deleted: bool,
 }
 
 impl Poll {
@@ -173,7 +182,6 @@ impl Poll {
         + 4
         + MAX_OPTIONS * (4 + 60)
         + MAX_OPTIONS * 8
-        + 1
         + 1;
 }
 
@@ -231,13 +239,12 @@ mod tests {
             nonce: [2; 16],
             created_at: 100,
             closes_at: 200,
-            closed: false,
+            status: PollStatus::Open,
             title: "Question?".into(),
             description: "".into(),
             options: vec!["Yes".into(), "No".into()],
             votes: [3, 2, 0, 0, 0, 0],
             bump: 254,
-            deleted: false,
         };
         let mut bytes = Vec::new();
         poll.try_serialize(&mut bytes).unwrap();
@@ -252,24 +259,35 @@ mod tests {
 
     // Exercise Anchor's real account constraints and instruction handler without
     // a validator; no clock or CPI is needed for deletion.
-    fn delete_as(signer: Pubkey, is_signer: bool, closed: bool) -> Result<Poll> {
+    fn delete_as(
+        signer: Pubkey,
+        is_signer: bool,
+        status: PollStatus,
+        maximum: bool,
+    ) -> Result<Poll> {
         let creator = Pubkey::new_from_array([1; 32]);
         let nonce = [2; 16];
         let (address, bump) =
             Pubkey::find_program_address(&[b"poll", creator.as_ref(), nonce.as_ref()], &crate::ID);
-        let poll = Poll {
+        let mut poll = Poll {
             creator,
             nonce,
             created_at: 100,
             closes_at: 200,
-            closed,
+            status,
             title: "Question?".into(),
             description: "".into(),
             options: vec!["Yes".into(), "No".into()],
             votes: [3, 2, 0, 0, 0, 0],
             bump,
-            deleted: false,
         };
+        if maximum {
+            poll.title = "x".repeat(100);
+            poll.description = "x".repeat(280);
+            poll.options = (0..MAX_OPTIONS)
+                .map(|i| format!("{i}{}", "x".repeat(59)))
+                .collect();
+        }
         let mut data = vec![0; Poll::SPACE];
         poll.try_serialize(&mut data.as_mut_slice())?;
         let mut poll_lamports = 1;
@@ -312,18 +330,70 @@ mod tests {
     #[test]
     fn only_the_creator_can_delete_and_must_sign() {
         let creator = Pubkey::new_from_array([1; 32]);
-        assert!(delete_as(Pubkey::new_unique(), true, false).is_err());
-        assert!(delete_as(creator, false, false).is_err());
+        assert!(delete_as(Pubkey::new_unique(), true, PollStatus::Open, false).is_err());
+        assert!(delete_as(creator, false, PollStatus::Open, false).is_err());
     }
 
     #[test]
     fn creator_can_delete_open_and_ended_polls_without_losing_receipts_or_results() {
-        for closed in [false, true] {
-            let poll = delete_as(Pubkey::new_from_array([1; 32]), true, closed).unwrap();
-            assert!(poll.deleted);
-            assert!(poll.closed);
+        for status in [PollStatus::Open, PollStatus::Closed, PollStatus::Deleted] {
+            let poll = delete_as(Pubkey::new_from_array([1; 32]), true, status, false).unwrap();
+            assert_eq!(poll.status, PollStatus::Deleted);
             assert_eq!(poll.votes, [3, 2, 0, 0, 0, 0]);
             assert_eq!(poll.title, "Question?");
+        }
+    }
+
+    #[test]
+    fn maximum_sized_legacy_accounts_need_no_migration() {
+        #[derive(AnchorSerialize)]
+        struct LegacyPoll {
+            creator: Pubkey,
+            nonce: [u8; 16],
+            created_at: i64,
+            closes_at: i64,
+            closed: bool,
+            title: String,
+            description: String,
+            options: Vec<String>,
+            votes: [u64; MAX_OPTIONS],
+            bump: u8,
+        }
+        for closed in [false, true] {
+            let old = LegacyPoll {
+                creator: Pubkey::new_from_array([1; 32]),
+                nonce: [2; 16],
+                created_at: 100,
+                closes_at: 200,
+                closed,
+                title: "x".repeat(100),
+                description: "x".repeat(280),
+                options: (0..MAX_OPTIONS)
+                    .map(|i| format!("{i}{}", "x".repeat(59)))
+                    .collect(),
+                votes: [3, 2, 0, 0, 0, 0],
+                bump: 254,
+            };
+            let mut bytes = vec![110, 234, 167, 188, 231, 136, 153, 111];
+            old.serialize(&mut bytes).unwrap();
+            assert_eq!(bytes.len(), 898);
+            assert_eq!(bytes.len(), Poll::SPACE);
+            let poll = Poll::try_deserialize(&mut bytes.as_slice()).unwrap();
+            assert_eq!(
+                poll.status,
+                if closed {
+                    PollStatus::Closed
+                } else {
+                    PollStatus::Open
+                }
+            );
+            assert_eq!(poll.votes, old.votes);
+            let deleted = delete_as(old.creator, true, poll.status, true).unwrap();
+            assert_eq!(deleted.status, PollStatus::Deleted);
+            let mut updated = Vec::new();
+            deleted.try_serialize(&mut updated).unwrap();
+            assert_eq!(updated.len(), bytes.len());
+            assert_eq!(updated[72], 2);
         }
     }
 

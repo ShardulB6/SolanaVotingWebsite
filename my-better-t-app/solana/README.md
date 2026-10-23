@@ -30,32 +30,55 @@ These native tests exercise deletion account constraints and the handler (creato
 
 ## Program build and configuration
 
-To prepare a Solana executable, install Anchor CLI 0.32.1 and its compatible Solana/Agave SBF toolchain. See the [Anchor release instructions](https://www.anchor-lang.com/docs/updates/release-notes/0-32-1).
+Install Anchor CLI 0.32.1, Solana/Agave CLI 2.3.0, and SBF platform tools v1.52 (the locked dependencies require Rust 2024 support). See the [Anchor release instructions](https://www.anchor-lang.com/docs/updates/release-notes/0-32-1).
 
 From this directory:
 
 ```bash
-anchor build
-anchor keys sync
-anchor build
+anchor build --no-idl -- --tools-version v1.52
+# Upgrade the configured Devnet program with its existing deployment authority:
+solana program deploy target/deploy/husky_voting.so \
+  --program-id BsG7VkCXXtn1p7akwd4AHwRmscqR29XRFL8ZMp6veJRq --url devnet --use-rpc
 ```
 
-The first build creates a local program keypair. `anchor keys sync` updates `declare_id!` and `Anchor.toml` to that address. The checked-in address is a development placeholder, not a deployed voting program. Keep the generated keypair and deployment authority private; `target/` is ignored.
+The checked-in program address is the current Devnet deployment. Upgrades require its deployment authority; `--program-id` accepts the existing address without creating a new program. Keep deployment keys private; `target/` is ignored. For a separate new deployment, generate its keypair and explicitly synchronize `declare_id!` and `Anchor.toml` with that address.
 
-Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. For the Devnet deployment commands and matching website configuration, follow the [hosting guide](../../README.md#host-the-project).
+If the executable has outgrown the program allocation, extend it by at least 10,240 bytes before deploying with `--no-auto-extend`. The installed CLI can otherwise request an extension smaller than the cluster permits. This changes executable storage, not poll account sizes.
+
+The browser uses its own codecs. `--no-idl` avoids the current IDL generator's `proc_macro2::Span::unwrap` tooling error.
+
+Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. The running website must serve this same client version; merging a branch does not update an app running from a different worktree. For matching website configuration, follow the [hosting guide](../../README.md#host-the-project).
 
 After a Devnet deployment, add the program address to `apps/web/.env`:
 
 ```dotenv
-VITE_SOLANA_PROGRAM_ID=<the deployed program address>
+VITE_SOLANA_PROGRAM_ID=BsG7VkCXXtn1p7akwd4AHwRmscqR29XRFL8ZMp6veJRq
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
 
-The deletion feature adds a `deleted` boolean to the poll account layout and a `delete_poll` instruction. Build and deploy this program version before using the updated client. Existing deployments need an explicit account migration or a fresh program deployment; changing only the website does not add deletion to an older deployed program.
+The deletion feature adds the `delete_poll` instruction. It reuses the original closed/open byte at offset 72: `0` means open, `1` means closed, and `2` means deleted. All later offsets and the 898-byte allocation stay unchanged. Existing open and closed polls, including maximum-sized polls, need no migration. Build and upgrade the same program address, then update the web client; updating only the website cannot add a missing program instruction.
 
 Restart the dev server or rebuild the web app. These values are public build-time settings. An RPC URL used here must be safe to expose to browsers; do not include private credentials.
 
 Wallets need Devnet SOL for transaction fees and the rent-exempt balances of poll/receipt accounts. There is no fee sponsorship in this version. Mainnet support would need an explicit client network/Explorer configuration change and a separate program deployment.
+
+## Verify deletion across an upgrade
+
+With Node 24, installed web dependencies, and a funded Devnet CLI wallet, run this before upgrading the original program:
+
+```bash
+node --experimental-transform-types scripts/verify-deletion.mjs prepare \
+  BsG7VkCXXtn1p7akwd4AHwRmscqR29XRFL8ZMp6veJRq /tmp/deletion-report.json
+```
+
+This snapshots existing public poll/receipt accounts and creates two clearly labeled test polls, including a maximum-sized legacy account. After upgrading, run:
+
+```bash
+node --experimental-transform-types scripts/verify-deletion.mjs verify \
+  BsG7VkCXXtn1p7akwd4AHwRmscqR29XRFL8ZMp6veJRq /tmp/deletion-report.json
+```
+
+Verification deletes only the script's test polls, checks that another wallet cannot delete them, checks voting rejection and permanent deletion after closure, and creates/votes/deletes a new poll while preserving its receipt. It confirms original accounts remain byte-for-byte unchanged. It temporarily funds a second wallet with 0.02 Devnet SOL and returns its unspent balance. The report contains public addresses, account data, and transaction signatures; no private keys.
 
 ## QR links and phones
 

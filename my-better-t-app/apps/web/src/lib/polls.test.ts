@@ -10,8 +10,8 @@ const nonce = new Uint8Array(16).fill(2);
 const address = pollAddress(program, creator, nonce);
 let polls: typeof import("./polls");
 
-// Matches Anchor's serialized Poll, including its trailing deletion marker.
-function pollAccount(deleted: boolean) {
+// Uses the original account layout, with deletion encoded in the status byte.
+function pollAccount(deleted: boolean, closed = false) {
   const string = (value: string) => {
     const size = Buffer.alloc(4);
     size.writeUInt32LE(Buffer.byteLength(value));
@@ -36,14 +36,14 @@ function pollAccount(deleted: boolean) {
       creator.toBuffer(),
       Buffer.from(nonce),
       times,
-      Buffer.from([0]),
+      Buffer.from([deleted ? 2 : Number(closed)]),
       string("Question?"),
       string(""),
       count,
       string("Yes"),
       string("No"),
       Buffer.alloc(48),
-      Buffer.from([bump, Number(deleted)]),
+      Buffer.from([bump]),
     ]),
   };
 }
@@ -65,6 +65,12 @@ describe("on-chain poll deletion", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0].deleted).toBe(false);
     expect(pollIsOpen({ ...listed[0], deleted: true })).toBe(false);
+  });
+
+  it("reads legacy closed accounts without a trailing deletion field", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(pollAccount(false, true));
+    const poll = await polls.fetchPoll(address.toBase58());
+    expect(poll).toMatchObject({ closed: true, deleted: false, title: "Question?" });
   });
 
   it("returns unavailable for deleted and missing polls while loading active polls", async () => {

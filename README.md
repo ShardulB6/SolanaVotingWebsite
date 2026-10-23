@@ -12,7 +12,7 @@ HuskyVote is a community polling app for Hacktoberfest Hack Day Toronto x HuskyH
 
 Signing in only signs a message; creating a poll or voting requires a separate wallet-approved transaction and Devnet SOL. Polls, votes, and results are public. One vote per wallet does not establish one vote per person. Deleting a poll removes it from the app and stops voting, but retains its blockchain history and accounts.
 
-The repository includes both the website and the Rust/Anchor voting program. The checked-in program address is a development placeholder; voting needs a deployed program and matching website configuration. You can run and review the website before deploying either part.
+The repository includes both the website and the Rust/Anchor voting program. The checked-in program address is the current Devnet deployment; voting needs matching website configuration and the current program version. You can run and review the website before deploying either part.
 
 ## How it works
 
@@ -50,23 +50,23 @@ From `my-better-t-app/`:
 cd solana
 cargo test --locked
 cargo fmt --check
-anchor build
+anchor build --no-idl -- --tools-version v1.52
 anchor keys sync
-anchor build
+anchor build --no-idl -- --tools-version v1.52
 anchor keys list
 ```
 
-The first build generates `target/deploy/husky_voting-keypair.json`. Syncing updates the Rust program ID and `Anchor.toml`; the second build embeds that address. Before using the program for an event, run the validator integration scenarios in the [program README](./my-better-t-app/solana/README.md#program-build-and-configuration). The existing native tests do not exercise complete validator transactions.
+For a separate new deployment, the first build generates `target/deploy/husky_voting-keypair.json`. To upgrade the current Devnet program and preserve existing polls, follow the [upgrade instructions](./my-better-t-app/solana/README.md#program-build-and-configuration) instead of synchronizing a new keypair. Syncing updates the Rust program ID and `Anchor.toml`; the second build embeds that address. Before using the program for an event, run the validator integration scenarios in the [program README](./my-better-t-app/solana/README.md#program-build-and-configuration). The existing native tests do not exercise complete validator transactions.
 
 Deploy and verify the program, replacing `YOUR_PROGRAM_ID` with the address printed by `anchor keys list`:
 
 ```bash
-anchor deploy --provider.cluster devnet
+anchor deploy --no-idl --provider.cluster devnet
 solana program show YOUR_PROGRAM_ID --url devnet
 cd ..
 ```
 
-Use that address in the website settings below. Deploy the current program version, including poll deletion; an older deployment needs an account migration or a fresh program address. The client fixes wallet transactions and Explorer links to Devnet, so changing only the RPC URL does not add Mainnet support.
+Use that address in the website settings below. Deploy the current program version, including poll deletion; the current status-byte encoding preserves the original 898-byte poll layout, so existing polls need no account migration. The client fixes wallet transactions and Explorer links to Devnet, so changing only the RPC URL does not add Mainnet support.
 
 ### 2. Configure production settings
 
