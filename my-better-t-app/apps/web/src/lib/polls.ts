@@ -11,6 +11,7 @@ import bs58 from "bs58";
 import {
   CAST_VOTE,
   CLOSE_POLL,
+  DELETE_POLL,
   POLL_DISCRIMINATOR,
   decodePoll,
   decodeReceipt,
@@ -55,7 +56,10 @@ export async function fetchPolls() {
     .flatMap(({ pubkey, account }) => {
       try {
         const poll = decodePoll(pubkey.toBase58(), account.data);
-        if (!pollAddress(program, new PublicKey(poll.creator), poll.nonce).equals(pubkey))
+        if (
+          poll.deleted ||
+          !pollAddress(program, new PublicKey(poll.creator), poll.nonce).equals(pubkey)
+        )
           return [];
         return [poll];
       } catch {
@@ -74,12 +78,13 @@ export async function fetchPoll(address: string) {
     throw new Error("This poll link is invalid.");
   }
   const account = await getConnection().getAccountInfo(key);
-  if (!account || !account.owner.equals(program))
+  if (!account) return null;
+  if (!account.owner.equals(program))
     throw new Error("Poll not found on Solana Devnet. Check the link with its creator.");
   const poll = decodePoll(address, account.data);
   if (!pollAddress(program, new PublicKey(poll.creator), poll.nonce).equals(key))
     throw new Error("Invalid poll account.");
-  return poll;
+  return poll.deleted ? null : poll;
 }
 
 export async function fetchReceipt(poll: string, voter: string) {
@@ -201,6 +206,25 @@ export async function closePoll(
   creator: string,
   onSubmitted: (signature: string) => void,
 ) {
+  return sendCreatorInstruction(poll, wallet, creator, CLOSE_POLL, onSubmitted);
+}
+
+export async function deletePoll(
+  poll: string,
+  wallet: SolanaWallet,
+  creator: string,
+  onSubmitted: (signature: string) => void,
+) {
+  return sendCreatorInstruction(poll, wallet, creator, DELETE_POLL, onSubmitted);
+}
+
+function sendCreatorInstruction(
+  poll: string,
+  wallet: SolanaWallet,
+  creator: string,
+  data: Buffer,
+  onSubmitted: (signature: string) => void,
+) {
   return sendInstruction(
     wallet,
     creator,
@@ -210,7 +234,7 @@ export async function closePoll(
         { pubkey: new PublicKey(poll), isSigner: false, isWritable: true },
         { pubkey: new PublicKey(creator), isSigner: true, isWritable: false },
       ],
-      data: CLOSE_POLL,
+      data,
     }),
     onSubmitted,
   );

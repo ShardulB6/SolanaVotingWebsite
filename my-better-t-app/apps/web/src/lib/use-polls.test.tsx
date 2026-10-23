@@ -2,20 +2,21 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const rpc = vi.hoisted(() => ({ read: vi.fn() }));
+const rpc = vi.hoisted(() => ({ read: vi.fn(), readPoll: vi.fn() }));
 vi.mock("./polls", () => ({
   programId: {},
   fetchPolls: rpc.read,
-  fetchPoll: vi.fn(),
+  fetchPoll: rpc.readPoll,
   fetchReceipt: vi.fn(),
   votingError: (error: Error) => error.message,
 }));
-import { usePolls } from "./use-polls";
+import { usePoll, usePolls } from "./use-polls";
 
 describe("live on-chain results", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     rpc.read.mockReset();
+    rpc.readPoll.mockReset();
   });
   afterEach(() => {
     cleanup();
@@ -39,6 +40,16 @@ describe("live on-chain results", () => {
     hook.unmount();
     await act(() => vi.advanceTimersByTimeAsync(10000));
     expect(rpc.read).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears a previously loaded poll when it is deleted on another device", async () => {
+    rpc.readPoll.mockResolvedValueOnce({ title: "Live poll" }).mockResolvedValueOnce(null);
+    const hook = renderHook(() => usePoll("poll-address"));
+    await act(async () => {});
+    expect(hook.result.current.data).toEqual({ title: "Live poll" });
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(hook.result.current.data).toBeNull();
+    expect(hook.result.current.error).toBe("");
   });
 
   it("keeps the poll mounted while a transaction triggers a refresh", async () => {
