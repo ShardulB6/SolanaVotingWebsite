@@ -10,8 +10,6 @@ build
 
 # Generated files
 apps/web/src/routeTree.gen.ts
-local.db
-local.db-*
 
 # Environment variables
 .env
