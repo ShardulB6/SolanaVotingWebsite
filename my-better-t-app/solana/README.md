@@ -47,7 +47,7 @@ If the executable has outgrown the program allocation, extend it by at least 10,
 
 The browser uses its own codecs. `--no-idl` avoids the current IDL generator's `proc_macro2::Span::unwrap` tooling error.
 
-Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. The running website must serve this same client version; merging a branch does not update an app running from a different worktree.
+Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. The running website must serve this same client version; merging a branch does not update an app running from a different worktree. For matching website configuration, follow the [hosting guide](../../README.md#host-the-project).
 
 After a Devnet deployment, add the program address to `apps/web/.env`:
 

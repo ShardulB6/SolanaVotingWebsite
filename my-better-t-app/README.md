@@ -1,8 +1,10 @@
-# my-better-t-app
+# HuskyVote application
 
 Source code is licensed under the [MIT License](../LICENSE), also available at `/license` in the app. The shadcn/ui copyright notice is preserved for adapted UI code. Third-party artwork and dependencies retain their respective licenses.
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Self, and more.
+HuskyVote is the wallet-authenticated community polling app for Hacktoberfest Hack Day Toronto x HuskyHack. This workspace contains the React/TanStack Start website, shared UI, Cloudflare infrastructure, and Solana voting program. It was scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack).
+
+For the project overview and step-by-step Devnet and Cloudflare deployment instructions, see the [repository README](../README.md#host-the-project).
 
 ## Features
 
@@ -75,7 +77,7 @@ Successful wallet sign-in opens `/dashboard`. Users can browse their polls and c
 
 The program source is in [`solana/`](./solana/README.md). It enforces one final vote per wallet per poll, immutable choices, deadlines, and creator-only early closure. Polls are open to all wallets; this does not enforce one vote per attendee.
 
-The app targets the deployed Solana Devnet program configured with `VITE_SOLANA_PROGRAM_ID`. A missing program setting shows a setup notice and disables creation. The served client and deployed program must both include deletion support; a Git merge alone does not update a running tunnel checkout. Creators can end voting early or permanently delete open or ended polls after confirming in their wallet. Deleted polls disappear from the app and stop accepting votes; their blockchain history remains public. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits.
+The app targets the deployed Solana Devnet program configured with `VITE_SOLANA_PROGRAM_ID`. A missing program setting shows a setup notice and disables creation. The served client and deployed program must both include deletion support; a Git merge alone does not update a running tunnel checkout. Creators can end voting early or permanently delete open or ended polls after confirming in their wallet. Deleted polls disappear from the app and stop accepting votes; their blockchain history remains public. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits. For full website hosting and operator setup, follow the [hosting guide](../README.md#host-the-project).
 
 Run the web tests with:
 
