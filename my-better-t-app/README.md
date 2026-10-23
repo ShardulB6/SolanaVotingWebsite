@@ -4,7 +4,7 @@ Source code is licensed under the [MIT License](../LICENSE), also available at `
 
 HuskyVote is the wallet-authenticated community polling app for Hacktoberfest Hack Day Toronto x HuskyHack. This workspace contains the React/TanStack Start website, shared UI, Cloudflare infrastructure, and Solana voting program. It was scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack).
 
-For the project overview and step-by-step Devnet and Cloudflare deployment instructions, see the [repository README](../README.md#host-the-project).
+The current shared site uses **Cloudflare Tunnel** to provide a public HTTPS URL for the app running on the host computer. For setup, see [Share the site with Cloudflare Tunnel](../README.md#share-the-site-with-cloudflare-tunnel). For Devnet and optional Cloudflare Workers deployment instructions, see the [hosting guide](../README.md#host-the-project).
 
 ## Features
 
@@ -44,7 +44,7 @@ Local web development does not require a database. To use port 4000 and allow ac
 pnpm --filter web run dev:bare --host 0.0.0.0 --port 4000 --strictPort
 ```
 
-On another device, use the host computer's network address with port 4000 instead of `localhost`.
+On another device on the same local network, use the host computer's network address with port 4000 instead of `localhost`. For the current Cloudflare Tunnel setup, follow the [tunnel instructions](../README.md#share-the-site-with-cloudflare-tunnel) and open the public HTTPS tunnel URL from other computers or phones. Keep the host computer awake and the app and tunnel running.
 
 ## Solana Sign-In
 

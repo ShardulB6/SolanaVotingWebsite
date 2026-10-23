@@ -18,7 +18,7 @@ The repository includes both the website and the Rust/Anchor voting program. The
 
 The frontend uses React, TanStack Start, TanStack Router, TypeScript, Tailwind CSS, and shared shadcn/ui components. Server functions verify wallet signatures and create a 24-hour encrypted, HttpOnly session cookie. The browser sends signed poll transactions and reads results through a public Solana RPC endpoint. The Anchor program enforces voting rules independently of the website session. No application database is required.
 
-Vite+ runs development, builds, and checks. The included Alchemy infrastructure targets Cloudflare Workers for the fullstack website and static assets.
+Vite+ runs development, builds, and checks. The current shared site uses **Cloudflare Tunnel** to expose the website running on the host computer through a public HTTPS URL. The included Alchemy infrastructure also supports deploying the fullstack website and static assets to Cloudflare Workers.
 
 ## Run locally
 
@@ -36,9 +36,33 @@ Open [http://localhost:3001](http://localhost:3001) in a wallet-enabled browser.
 
 See the [application README](./my-better-t-app/README.md) for authentication details, tests, and UI customization.
 
+## Share the site with Cloudflare Tunnel
+
+The current setup runs the app on the host computer at port 4000 and uses Cloudflare Tunnel for access from other computers and phones. After completing the local setup above, stop the local server and run this from `my-better-t-app/`:
+
+```bash
+pnpm --filter web run dev:bare --host 127.0.0.1 --port 4000 --strictPort
+```
+
+Install [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/), then open a second terminal on the same host computer and run:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:4000
+```
+
+Copy the public `https://….trycloudflare.com` URL printed by `cloudflared`. Keep the tunnel running. In the first terminal, stop the app and restart it with that specific hostname allowed, replacing `your-tunnel-hostname.trycloudflare.com` with the hostname from the printed URL (without `https://` or a trailing slash):
+
+```bash
+__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=your-tunnel-hostname.trycloudflare.com pnpm --filter web run dev:bare --host 127.0.0.1 --port 4000 --strictPort
+```
+
+Open the public HTTPS tunnel URL on the other computer or phone. `localhost` always refers to the device opening the link; only use `http://127.0.0.1:4000` on the host computer. Leave `VITE_PUBLIC_APP_URL` unset so shared poll links and QR codes use the tunnel's current origin.
+
+Keep the host computer awake and both the app and `cloudflared` running. A Quick Tunnel URL is temporary and can change when the tunnel restarts; update the allowed hostname and share the new URL after a restart. If Vite reports “Blocked request,” check the allowed hostname. If the host's local URL refuses connections, check that the app is running on port 4000.
+
 ## Host the project
 
-There are two deployments: the voting program on Solana Devnet and the fullstack website on Cloudflare Workers. Publishing the website alone does not deploy or enable the voting program. These are operator instructions; the repository does not automatically publish either component.
+The current website is shared through Cloudflare Tunnel as described above. The instructions below cover deploying the voting program to Solana Devnet and optionally deploying the fullstack website to Cloudflare Workers. A website deployed to Workers has its own public HTTPS URL and does not need a tunnel or a running host computer. Publishing the website alone does not deploy or enable the voting program. These are operator instructions; the repository does not automatically publish either component.
 
 ### 1. Deploy the voting program to Devnet
 
