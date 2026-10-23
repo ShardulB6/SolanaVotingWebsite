@@ -1,10 +1,15 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import "varlock/auto-load";
 
 export const web = Cloudflare.Website.Vite("web", {
   rootDir: "../../apps/web",
+  env: {
+    AUTH_SESSION_SECRET: Config.Redacted("AUTH_SESSION_SECRET"),
+    NODE_ENV: "production",
+  },
   compatibility: {
     flags: ["nodejs_compat"],
   },

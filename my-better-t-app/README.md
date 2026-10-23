@@ -1,5 +1,7 @@
 # my-better-t-app
 
+Source code is licensed under the [MIT License](../LICENSE), also available at `/license` in the app. The shadcn/ui copyright notice is preserved for adapted UI code. Third-party artwork and dependencies retain their respective licenses.
+
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Self, and more.
 
 ## Features
@@ -18,7 +20,15 @@ First, install the dependencies:
 pnpm install
 ```
 
-Then, run the local web development server:
+Create the local session encryption secret (keep `.env` out of git):
+
+```bash
+node --input-type=module -e 'import { randomBytes } from "node:crypto"; import { writeFileSync } from "node:fs"; writeFileSync("apps/web/.env", "AUTH_SESSION_SECRET=" + randomBytes(32).toString("hex") + "\n", { flag: "wx", mode: 0o600 })'
+```
+
+This creates the file only if it does not exist. If you already have an `.env`, add `AUTH_SESSION_SECRET` with a random value of at least 32 characters instead.
+
+Then, run the local web development server. The command loads and validates the app's environment with Varlock:
 
 ```bash
 pnpm run dev:web
@@ -29,10 +39,35 @@ Open [http://localhost:3001](http://localhost:3001) in your browser to see the f
 Local web development does not require a database. To use port 4000 and allow access from other devices, run:
 
 ```bash
-pnpm --filter web exec vp dev --host 0.0.0.0 --port 4000 --strictPort
+pnpm --filter web run dev:bare --host 0.0.0.0 --port 4000 --strictPort
 ```
 
 On another device, use the host computer's network address with port 4000 instead of `localhost`.
+
+## Solana Sign-In
+
+The home page adapts [shadcn login-04](https://ui.shadcn.com/blocks/login#login-04) to wallet authentication and uses the supplied Husky Hacktober Fest artwork. Its event details and Solana learning links come from the [Hacktoberfest Hack Day Toronto x HuskyHack MLH listing](https://events.mlh.com/events/15057-husky-hacktoberfest-hack-day-toronto). Shared event information lives in `apps/web/src/lib/event.ts` and also identifies the project in the wallet's sign-in message. This is a community voting project for the hack day; registration remains on MLH.
+
+Install a Solana wallet such as Phantom or Solflare, open the site in that browser (or the wallet's mobile browser), and choose **Connect Solana wallet**. Approve the sign-in message to verify ownership of your address. No RPC key, SOL balance, or transaction is needed for authentication.
+
+Wallets are discovered through Wallet Standard. The app uses `solana:signIn` when available, with `standard:connect` and `solana:signMessage` as a fallback. The server issues a random, five-minute challenge bound to the request's domain and origin, then validates the message, public key, address, and Ed25519 signature using `@solana/wallet-standard-util`. Authentication follows the [Sign In With Solana specification](https://github.com/phantom/sign-in-with-solana).
+
+Successful verification creates a 24-hour encrypted, HttpOnly, SameSite cookie; production cookies also require HTTPS. Reloading the page restores the session, and **Sign out** clears it. The challenge is removed from the current browser session after a verification attempt. Sessions are stateless: global revocation of copied cookies and global single-use challenge enforcement would require a shared server-side store.
+
+The implementation is split across:
+
+- `apps/web/src/components/login-form.tsx`: login-04 layout, wallet selection, loading, cancellation, and signed-in state.
+- `apps/web/src/lib/wallet.ts`: wallet discovery and message signing.
+- `apps/web/src/lib/auth.ts`: validated TanStack server functions.
+- `apps/web/src/lib/session.server.ts`: server verification and encrypted sessions. It reads the secret from the runtime environment so it is never bundled into client assets.
+
+For production, set a separate `AUTH_SESSION_SECRET` in the deployment environment and `NODE_ENV=production`, and serve over HTTPS. Alchemy binds the secret to the Cloudflare Worker as a secret environment variable. Local `dev:bare` and `serve` load the app schema through Varlock; other Node server launch commands must also load the schema or inject the runtime variables. Authentication establishes wallet ownership; voting eligibility and vote submission still need their own server-side authorization.
+
+Run the authentication tests with:
+
+```bash
+pnpm exec vp test apps/web/src/lib/session.test.ts
+```
 
 ## UI Customization
 

@@ -1,9 +1,7 @@
 import { Toaster } from "@my-better-t-app/ui/components/sonner";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
-import Header from "../components/header";
-
+import { hackDay } from "../lib/event";
 import appCss from "../index.css?url";
 
 export interface RouterAppContext {}
@@ -19,7 +17,11 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "My App",
+        title: "Hack Day Voting · HuskyHack Toronto",
+      },
+      {
+        name: "description",
+        content: `A Solana community voting project for ${hackDay.title}. ${hackDay.date}, ${hackDay.time}.`,
       },
     ],
     links: [
@@ -35,17 +37,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument() {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body>
-        <div className="grid h-svh grid-rows-[auto_1fr]">
-          <Header />
-          <Outlet />
-        </div>
+        <Outlet />
         <Toaster richColors />
-        <TanStackRouterDevtools position="bottom-left" />
         <Scripts />
       </body>
     </html>
