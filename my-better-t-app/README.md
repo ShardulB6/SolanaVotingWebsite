@@ -26,7 +26,7 @@ pnpm run dev:web
 
 Open [http://localhost:3001](http://localhost:3001) in your browser to see the fullstack application.
 
-Local web development does not require Cloudflare credentials or a database. To use port 4000 and allow access from other devices, run:
+Local web development does not require a database. To use port 4000 and allow access from other devices, run:
 
 ```bash
 pnpm --filter web exec vp dev --host 0.0.0.0 --port 4000 --strictPort
@@ -66,30 +66,9 @@ Each app owns its environment schema in `.env.schema`. Varlock generates `src/en
 
 Import the generated `ENV` accessor in application code. See [Varlock's monorepo guide](https://varlock.dev/guides/monorepos/).
 
-For Cloudflare, Alchemy loads and validates deployment inputs with `varlock/auto-load` in its Node/Bun deployment process. Alchemy supplies the website URL. In-Worker Varlock protections are deferred until an official Alchemy integration is available; see [the non-Wrangler deployment guidance](https://varlock.dev/integrations/cloudflare/#non-wrangler-deploy-tools-alchemy-sst-pulumi).
-
 Bun's automatic env loading is disabled in `bunfig.toml`; the framework integration or server bootstrap loads Varlock. Node deployments must include Varlock and its dependencies alongside the app schema.
 
 Run standalone Node/Bun tools that use Varlock from the owning app directory so they load that app's schema and env files. `env:generate` only generates TypeScript files; it does not initialize environment values in a subsequent command.
-
-## Deployment
-
-### Alchemy
-
-- Target: web on Cloudflare
-- Configure provider accounts: `cd packages/infra && pnpm exec alchemy profile edit`
-- Local web dev: `pnpm run dev:web`
-- Cloudflare dev (requires a configured provider account): `pnpm run dev`
-- Deploy: pnpm run deploy
-- Destroy: pnpm run destroy
-
-`alchemy profile edit` stores the selected Axiom, Cloudflare, Neon, PlanetScale, and/or Prisma provider profiles under `~/.alchemy`; no provider-specific setup command is required by this scaffold.
-
-Deploys are staged and default to a personal `dev_<username>` stage. For production, run the deploy with an explicit stage from `packages/infra`:
-
-```bash
-cd packages/infra && pnpm exec alchemy deploy --stage production
-```
 
 ## Git Hooks and Formatting
 
@@ -105,13 +84,13 @@ my-better-t-app/
 │   └── web/         # Fullstack application (React + TanStack Start)
 ├── packages/
 │   ├── config/      # Shared TypeScript configuration
-│   ├── infra/       # Alchemy configuration for Cloudflare hosting
+│   ├── infra/       # Deployment configuration
 │   └── ui/          # Shared shadcn/ui components and styles
 ```
 
 ## Available Scripts
 
-- `pnpm run dev`: Start development through Alchemy (requires Cloudflare credentials)
+- `pnpm run dev`: Start development through Alchemy (requires provider configuration)
 - `pnpm run build`: Build all applications
 - `pnpm run dev:web`: Start only the web application
 - `pnpm run check-types`: Check TypeScript types across all apps
