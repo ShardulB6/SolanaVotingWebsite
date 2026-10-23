@@ -9,10 +9,12 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
   },
+  optimizeDeps: { exclude: ["cloudflare:workers"] },
+  ssr: { external: ["cloudflare:workers", "node:sqlite"] },
   build: {
     rollupOptions: {
       // resolved by workerd at runtime; node builds cannot bundle it
-      external: ["cloudflare:workers"],
+      external: ["cloudflare:workers", "node:sqlite"],
     },
   },
   resolve: {

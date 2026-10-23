@@ -17,9 +17,8 @@ import {
 import { useState } from "react";
 import type { AuthUser } from "../lib/auth";
 import { pollIsOpen, shortAddress, totalVotes, type Poll } from "../lib/polls-codec";
-import { programId } from "../lib/polls";
 import { usePolls } from "../lib/use-polls";
-import { NetworkNotice, VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
+import { VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
 
 export function PollDashboard({ user }: { user: AuthUser | null }) {
   const live = usePolls();
@@ -57,7 +56,6 @@ export function PollDashboard({ user }: { user: AuthUser | null }) {
               <Plus className="size-4" /> Create a poll
             </Link>
           </div>
-          {!programId && <NetworkNotice />}
           <section className="mb-8 grid gap-4 sm:grid-cols-3" aria-label="Your voting overview">
             {[
               {
@@ -76,7 +74,7 @@ export function PollDashboard({ user }: { user: AuthUser | null }) {
                 label: "Votes collected",
                 value: mine.reduce((sum, poll) => sum + totalVotes(poll), 0),
                 icon: Vote,
-                note: "Voices, recorded on Solana",
+                note: "Signed votes · free to cast",
               },
             ].map(({ label, value, icon: Icon, note }) => (
               <Card key={label} className={panelClass}>

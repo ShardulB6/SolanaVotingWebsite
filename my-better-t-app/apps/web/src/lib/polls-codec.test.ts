@@ -13,6 +13,7 @@ import {
   decodeReceipt,
   encodeCreatePoll,
   pollAddress,
+  pollIsOpen,
   receiptAddress,
   validatePoll,
 } from "./polls-codec";
@@ -89,6 +90,47 @@ describe("Solana poll wire format", () => {
     expect(() => decodeReceipt(Buffer.concat([RECEIPT_DISCRIMINATOR, Buffer.alloc(65)]))).toThrow(
       "Incomplete",
     );
+  });
+
+  it("reads legacy open, closed, and deleted accounts from the original status byte", () => {
+    const string = (value: string) => {
+      const size = Buffer.alloc(4);
+      size.writeUInt32LE(Buffer.byteLength(value));
+      return Buffer.concat([size, Buffer.from(value)]);
+    };
+    const times = Buffer.alloc(16);
+    times.writeBigInt64LE(100n);
+    times.writeBigInt64LE(4102444800n, 8);
+    const count = Buffer.alloc(4);
+    count.writeUInt32LE(2);
+    // No trailing deletion field: existing accounts retain their original layout.
+    const data = Buffer.concat([
+      POLL_DISCRIMINATOR,
+      creator.toBuffer(),
+      Buffer.from(nonce),
+      times,
+      Buffer.from([0]),
+      string("Question?"),
+      string(""),
+      count,
+      string("Yes"),
+      string("No"),
+      Buffer.alloc(48),
+      Buffer.from([1]),
+    ]);
+    for (const status of [0, 1, 2]) {
+      data[72] = status;
+      const poll = decodePoll(creator.toBase58(), data);
+      expect(poll).toMatchObject({
+        title: "Question?",
+        options: ["Yes", "No"],
+        closed: status !== 0,
+        deleted: status === 2,
+      });
+      expect(pollIsOpen(poll, 200)).toBe(status === 0);
+    }
+    data[72] = 3;
+    expect(() => decodePoll(creator.toBase58(), data)).toThrow("Invalid poll status");
   });
 
   it("gives every election and voter their own deterministic receipt", () => {

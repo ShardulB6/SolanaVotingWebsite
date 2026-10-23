@@ -21,6 +21,8 @@ export type Poll = {
   description: string;
   options: string[];
   votes: number[];
+  anchorSignature?: string | null;
+  anchorDigest?: string | null;
 };
 
 export type PollInput = { title: string; description: string; options: string[]; closesAt: number };

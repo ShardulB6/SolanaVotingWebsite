@@ -39,8 +39,9 @@ vi.mock("../lib/wallet", () => ({
   signInWithWallet: vi.fn(),
 }));
 vi.mock("../lib/polls", () => ({
-  programId: {},
   castVote: vi.fn(),
+  publishResults: vi.fn(),
+  downloadResults: vi.fn(),
   closePoll: vi.fn(),
   deletePoll: vi.fn(),
   explorerUrl: (value: string) => `https://explorer.solana.com/address/${value}?cluster=devnet`,
@@ -55,6 +56,8 @@ vi.mock("../lib/use-polls", () => ({
     refresh: vi.fn(),
   }),
 }));
+
+vi.mock("../lib/voting-api", () => ({ checkAnchor: vi.fn() }));
 
 import { PollRoom } from "./poll-room";
 import { deletePoll } from "../lib/polls";
@@ -105,7 +108,7 @@ describe("poll room", () => {
   it("restores an existing vote and does not offer another ballot", () => {
     state.receipt = { poll: state.poll.address, voter: state.poll.creator, option: 1 };
     render(<PollRoom pollId={state.poll.address} user={{ address: state.poll.creator }} />);
-    expect(screen.getByRole("heading", { name: "Your voice is on chain." })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Your vote is saved." })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Confirm vote" })).toBeNull();
     expect(screen.getByText("Project Maple", { selector: "span.font-medium" })).toBeTruthy();
   });
@@ -157,17 +160,6 @@ describe("poll room", () => {
     expect(deletePoll).not.toHaveBeenCalled();
   });
 
-  it("asks for the creator wallet when it is disconnected", async () => {
-    render(<PollRoom pollId={state.poll.address} user={{ address: state.poll.creator }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Delete poll" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("Reconnect the creator’s wallet"),
-    );
-    expect(deletePoll).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: state.poll.title })).toBeTruthy();
-  });
-
   it("waits for confirmation, prevents duplicate deletion, and removes the poll content", async () => {
     state.wallet = {
       name: "Test wallet",
@@ -175,22 +167,17 @@ describe("poll room", () => {
       features: { "solana:signTransaction": {} },
     };
     let confirm!: () => void;
-    vi.mocked(deletePoll).mockImplementation((_poll, _wallet, _creator, onSubmitted) => {
-      onSubmitted("test-signature");
-      return new Promise<string>((resolve) => {
-        confirm = () => resolve("test-signature");
-      });
-    });
+    vi.mocked(deletePoll).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          confirm = resolve;
+        }),
+    );
     render(<PollRoom pollId={state.poll.address} user={{ address: state.poll.creator }} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete poll" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
-    expect(deletePoll).toHaveBeenCalledWith(
-      state.poll.address,
-      state.wallet,
-      state.poll.creator,
-      expect.any(Function),
-    );
-    expect(screen.getByRole("button", { name: "Confirming…" }).hasAttribute("disabled")).toBe(true);
+    expect(deletePoll).toHaveBeenCalledWith(state.poll.address);
+    expect(screen.getByRole("button", { name: "Saving…" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "Keep poll" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("heading", { name: state.poll.title })).toBeTruthy();
     confirm();

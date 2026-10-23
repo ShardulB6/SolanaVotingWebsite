@@ -12,7 +12,7 @@ vi.mock("./polls", () => ({
 }));
 import { usePoll, usePolls } from "./use-polls";
 
-describe("live on-chain results", () => {
+describe("live database results", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     rpc.read.mockReset();
@@ -23,7 +23,7 @@ describe("live on-chain results", () => {
     vi.useRealTimers();
   });
 
-  it("refreshes across a connection failure without erasing the last confirmed result", async () => {
+  it("refreshes across a connection failure without erasing the last saved result", async () => {
     rpc.read
       .mockResolvedValueOnce([{ votes: [3, 2] }])
       .mockRejectedValueOnce(new Error("RPC unavailable"))
@@ -52,7 +52,7 @@ describe("live on-chain results", () => {
     expect(hook.result.current.error).toBe("");
   });
 
-  it("keeps the poll mounted while a transaction triggers a refresh", async () => {
+  it("keeps the poll mounted while a saved vote triggers a refresh", async () => {
     rpc.read.mockResolvedValueOnce([{ votes: [1, 0] }]);
     const hook = renderHook(usePolls);
     await act(async () => {});

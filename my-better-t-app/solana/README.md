@@ -1,6 +1,8 @@
 # HuskyVote Solana program
 
-This Anchor program backs the web dashboard. Hosting and network deployment are separate decisions; nothing here deploys automatically. The web client currently targets **Solana Devnet**.
+**Legacy on-chain implementation:** the current web dashboard uses [D1 + Drizzle and signed ballots](../apps/web/HYBRID_VOTING.md), with final results published through Solana’s Memo program. It does not call this Anchor program or require its deployment. Existing accounts are not migrated to D1. The documentation below describes this separate implementation.
+
+This Anchor program previously backed the web dashboard. Hosting and network deployment are separate decisions; nothing here deploys automatically. The web client currently targets **Solana Devnet**.
 
 ## Behavior
 

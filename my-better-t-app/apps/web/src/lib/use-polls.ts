@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchPoll, fetchPolls, fetchReceipt, programId, votingError } from "./polls";
+import { fetchPoll, fetchPolls, fetchReceipt, votingError } from "./polls";
 
-// Read confirmed on-chain state on every refresh, including after mobile reconnections.
+// Read database state on every refresh, including after mobile reconnections.
 function useLiveData<T>(read: () => Promise<T>, enabled: boolean) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
@@ -46,15 +46,15 @@ function useLiveData<T>(read: () => Promise<T>, enabled: boolean) {
 }
 
 export function usePolls() {
-  return useLiveData(fetchPolls, !!programId);
+  return useLiveData(fetchPolls, true);
 }
 
 export function usePoll(address: string) {
   const read = useCallback(() => fetchPoll(address), [address]);
-  return useLiveData(read, !!programId);
+  return useLiveData(read, true);
 }
 
 export function useReceipt(poll: string, voter?: string) {
   const read = useCallback(() => fetchReceipt(poll, voter!), [poll, voter]);
-  return useLiveData(read, !!programId && !!voter);
+  return useLiveData(read, !!voter);
 }
