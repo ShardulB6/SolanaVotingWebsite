@@ -119,7 +119,12 @@ export function decodePoll(address: string, data: Uint8Array): Poll {
   const nonce = reader.bytes(16);
   const createdAt = reader.integer(true);
   const closesAt = reader.integer(true);
-  const closed = reader.u8() !== 0;
+  // Original accounts used a boolean here: 0=open and 1=closed.
+  // Deletion uses 2 in that same byte; all later offsets stay unchanged.
+  const status = reader.u8();
+  if (status > 2) throw new Error("Invalid poll status.");
+  const closed = status !== 0;
+  const deleted = status === 2;
   const title = reader.string(100);
   const description = reader.string(280);
   const count = reader.u32();
@@ -127,7 +132,6 @@ export function decodePoll(address: string, data: Uint8Array): Poll {
   const options = Array.from({ length: count }, () => reader.string(60));
   const votes = Array.from({ length: 6 }, () => reader.integer());
   reader.u8(); // PDA bump
-  const deleted = reader.u8() !== 0;
   return {
     address,
     creator,

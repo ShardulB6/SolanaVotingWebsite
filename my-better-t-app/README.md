@@ -1,8 +1,10 @@
-# my-better-t-app
+# HuskyVote application
 
 Source code is licensed under the [MIT License](../LICENSE), also available at `/license` in the app. The shadcn/ui copyright notice is preserved for adapted UI code. Third-party artwork and dependencies retain their respective licenses.
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Self, and more.
+HuskyVote is the wallet-authenticated community polling app for Hacktoberfest Hack Day Toronto x HuskyHack. This workspace contains the React/TanStack Start website, shared UI, Cloudflare infrastructure, and Solana voting program. It was scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack).
+
+The current shared site uses **Cloudflare Tunnel** to provide a public HTTPS URL for the app running on the host computer. For setup, see [Share the site with Cloudflare Tunnel](../README.md#share-the-site-with-cloudflare-tunnel). For Devnet and optional Cloudflare Workers deployment instructions, see the [hosting guide](../README.md#host-the-project).
 
 ## Features
 
@@ -42,7 +44,7 @@ Local web development uses an automatically initialized SQLite file; hosted voti
 pnpm --filter web run dev:bare --host 0.0.0.0 --port 4000 --strictPort
 ```
 
-On another device, use the host computer's network address with port 4000 instead of `localhost`.
+On another device on the same local network, use the host computer's network address with port 4000 instead of `localhost`. For the current Cloudflare Tunnel setup, follow the [tunnel instructions](../README.md#share-the-site-with-cloudflare-tunnel) and open the public HTTPS tunnel URL from other computers or phones. Keep the host computer awake and the app and tunnel running.
 
 ## Solana Sign-In
 
@@ -75,7 +77,7 @@ Successful wallet sign-in opens `/dashboard`. Users create public polls with 2â€
 
 After closure or expiry, the creator can publish the final results hash with one small Solana Devnet Memo transaction. Anyone can download the signed results record and verify its signatures, tally, and hash against the on-chain transaction. Solana commits to the published record; duplicate prevention and collecting the votes depend on the application and database. Multiple wallets are still possible for one person.
 
-See [free voting with D1, Drizzle, and Solana](apps/web/HYBRID_VOTING.md) for setup, migration ownership, tunnel access, trust boundaries, cost behavior, and independent verification. The earlier Anchor program remains in `solana/` as a separate implementation; the web client no longer needs its program ID, and older on-chain polls are not migrated automatically.
+See [free voting with D1, Drizzle, and Solana](apps/web/HYBRID_VOTING.md) for setup, migration ownership, tunnel access, trust boundaries, cost behavior, and independent verification. The earlier Anchor program remains in `solana/` as a separate implementation; the web client no longer needs its program ID, and older on-chain polls are not migrated automatically. For full website hosting and operator setup, follow the [hosting guide](../README.md#host-the-project).
 
 Run the web tests with:
 
