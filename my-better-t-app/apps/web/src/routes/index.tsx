@@ -1,11 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { LoginForm } from "../components/login-form";
 import { getCurrentUser } from "../lib/auth";
 
 export const Route = createFileRoute("/")({
   headers: () => ({ "Cache-Control": "private, no-store" }),
-  loader: () => getCurrentUser(),
+  loader: async () => {
+    const user = await getCurrentUser();
+    if (user) throw redirect({ to: "/dashboard" });
+    return user;
+  },
   component: HomeComponent,
 });
 
