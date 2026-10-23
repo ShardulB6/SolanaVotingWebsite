@@ -1,6 +1,8 @@
 import type {
   SolanaSignInFeature,
   SolanaSignMessageFeature,
+  SolanaSignTransactionFeature,
+  SolanaSignAndSendTransactionFeature,
 } from "@solana/wallet-standard-features";
 import type { Wallet } from "@wallet-standard/base";
 import type { StandardConnectFeature } from "@wallet-standard/features";
@@ -12,7 +14,13 @@ import { useEffect, useState } from "react";
 import { createSignInChallenge, signIn } from "./auth";
 
 export type SolanaWallet = Wallet & {
-  features: StandardConnectFeature & Partial<SolanaSignInFeature & SolanaSignMessageFeature>;
+  features: StandardConnectFeature &
+    Partial<
+      SolanaSignInFeature &
+        SolanaSignMessageFeature &
+        SolanaSignTransactionFeature &
+        SolanaSignAndSendTransactionFeature
+    >;
 };
 
 export function useSolanaWallets() {

@@ -61,12 +61,26 @@ The implementation is split across:
 - `apps/web/src/lib/auth.ts`: validated TanStack server functions.
 - `apps/web/src/lib/session.server.ts`: server verification and encrypted sessions. It reads the secret from the runtime environment so it is never bundled into client assets.
 
-For production, set a separate `AUTH_SESSION_SECRET` in the deployment environment and `NODE_ENV=production`, and serve over HTTPS. Alchemy binds the secret to the Cloudflare Worker as a secret environment variable. Local `dev:bare` and `serve` load the app schema through Varlock; other Node server launch commands must also load the schema or inject the runtime variables. Authentication establishes wallet ownership; voting eligibility and vote submission still need their own server-side authorization.
+For production, set a separate `AUTH_SESSION_SECRET` in the deployment environment and `NODE_ENV=production`, and serve over HTTPS. Alchemy binds the secret to the Cloudflare Worker as a secret environment variable. Local `dev:bare` and `serve` load the app schema through Varlock; other Node server launch commands must also load the schema or inject the runtime variables. Authentication establishes wallet ownership; poll creation and voting require separate signed Solana transactions. The voting program enforces its rules independently of the website session.
 
 Run the authentication tests with:
 
 ```bash
 pnpm exec vp test apps/web/src/lib/session.test.ts
+```
+
+## Voting dashboard
+
+Successful wallet sign-in opens `/dashboard`. Users can browse their polls and community polls, search questions, and create public polls with 2–6 options and a closing time. Each poll has a shareable `/polls/<address>` page, a QR code, presentation mode, and confirmed on-chain results that refresh every five seconds. Phone users stay on the poll during wallet sign-in and approve a separate voting transaction. Existing vote receipts restore the submitted state after reload.
+
+The program source is in [`solana/`](./solana/README.md). It enforces one final vote per wallet per poll, immutable choices, deadlines, and creator-only early closure. Polls are open to all wallets; this does not enforce one vote per attendee.
+
+Network and site deployment are intentionally pending. Until `VITE_SOLANA_PROGRAM_ID` points to a deployed Devnet program, the dashboard shows a setup notice and disables creation. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits.
+
+Run the web tests with:
+
+```bash
+pnpm exec vp test apps/web/src/lib/session.test.ts apps/web/src/lib/polls-codec.test.ts apps/web/src/lib/use-polls.test.tsx apps/web/src/components/poll-room.test.tsx
 ```
 
 ## UI Customization
