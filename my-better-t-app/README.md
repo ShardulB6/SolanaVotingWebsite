@@ -8,8 +8,6 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **TanStack Start** - SSR framework with TanStack Router
 - **TailwindCSS** - Utility-first CSS for rapid UI development
 - **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Drizzle** - TypeScript-first ORM
-- **Cloudflare D1** - Database engine
 - **Vite+** - Unified Vite toolchain, workspace task runner, linting, and formatting
 
 ## Getting Started
@@ -20,27 +18,21 @@ First, install the dependencies:
 pnpm install
 ```
 
-## Database Setup
-
-This project uses Cloudflare D1 (SQLite) with Drizzle ORM.
-
-Runtime database access uses the Cloudflare `DB` binding from `packages/infra/alchemy.run.ts`. If a local `DATABASE_URL` is present, it is only for database tooling.
-
-Alchemy provisions the D1 database and applies migrations during `deploy`.
-
-1. Generate migration files:
+Then, run the local web development server:
 
 ```bash
-pnpm run db:generate
-```
-
-Then, run the development server:
-
-```bash
-pnpm run dev
+pnpm run dev:web
 ```
 
 Open [http://localhost:3001](http://localhost:3001) in your browser to see the fullstack application.
+
+Local web development does not require a database. To use port 4000 and allow access from other devices, run:
+
+```bash
+pnpm --filter web exec vp dev --host 0.0.0.0 --port 4000 --strictPort
+```
+
+On another device, use the host computer's network address with port 4000 instead of `localhost`.
 
 ## UI Customization
 
@@ -72,31 +64,11 @@ If you want to add app-specific blocks instead of shared primitives, run the sha
 
 Each app owns its environment schema in `.env.schema`. Varlock generates `src/env.ts` during installation; run `pnpm run env:generate` after changing a schema. Commit schemas, and keep secrets in ignored env files or your deployment platform.
 
-Import the generated `ENV` accessor in application code. Shared database and auth packages receive configuration or initialized clients from the application. See [Varlock's monorepo guide](https://varlock.dev/guides/monorepos/).
-
-For Cloudflare, Alchemy loads and validates deployment inputs with `varlock/auto-load` in its Node/Bun deployment process. Worker code reads native bindings; web clients use the framework's public env API through `src/env.public.ts` where needed. Alchemy supplies resource URLs and managed database credentials. In-Worker Varlock protections are deferred until an official Alchemy integration is available; see [the non-Wrangler deployment guidance](https://varlock.dev/integrations/cloudflare/#non-wrangler-deploy-tools-alchemy-sst-pulumi).
+Import the generated `ENV` accessor in application code. See [Varlock's monorepo guide](https://varlock.dev/guides/monorepos/).
 
 Bun's automatic env loading is disabled in `bunfig.toml`; the framework integration or server bootstrap loads Varlock. Node deployments must include Varlock and its dependencies alongside the app schema.
 
 Run standalone Node/Bun tools that use Varlock from the owning app directory so they load that app's schema and env files. `env:generate` only generates TypeScript files; it does not initialize environment values in a subsequent command.
-
-## Deployment
-
-### Alchemy
-
-- Target: web on Cloudflare
-- Configure provider accounts: `cd packages/infra && pnpm exec alchemy profile edit`
-- Dev: pnpm run dev
-- Deploy: pnpm run deploy
-- Destroy: pnpm run destroy
-
-`alchemy profile edit` stores the selected Axiom, Cloudflare, Neon, PlanetScale, and/or Prisma provider profiles under `~/.alchemy`; no provider-specific setup command is required by this scaffold.
-
-Deploys are staged and default to a personal `dev_<username>` stage. For production, run the deploy with an explicit stage from `packages/infra`:
-
-```bash
-cd packages/infra && pnpm exec alchemy deploy --stage production
-```
 
 ## Git Hooks and Formatting
 
@@ -111,17 +83,17 @@ my-better-t-app/
 ├── apps/
 │   └── web/         # Fullstack application (React + TanStack Start)
 ├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   └── db/          # Database schema & queries
+│   ├── config/      # Shared TypeScript configuration
+│   ├── infra/       # Deployment configuration
+│   └── ui/          # Shared shadcn/ui components and styles
 ```
 
 ## Available Scripts
 
-- `pnpm run dev`: Start all applications in development mode
+- `pnpm run dev`: Start development through Alchemy (requires provider configuration)
 - `pnpm run build`: Build all applications
 - `pnpm run dev:web`: Start only the web application
 - `pnpm run check-types`: Check TypeScript types across all apps
-- `pnpm run db:generate`: Generate database client/types
 - `pnpm run check`: Run Vite+ format/lint checks and workspace TypeScript checks
 - `pnpm run lint`: Run Vite+ lint checks
 - `pnpm run format`: Run Vite+ formatting

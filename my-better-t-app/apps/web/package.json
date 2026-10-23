@@ -10,14 +10,11 @@
     "env:generate": "varlock codegen"
   },
   "dependencies": {
-    "@libsql/client": "catalog:",
-    "@my-better-t-app/db": "workspace:*",
     "@my-better-t-app/ui": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.2",
     "@tanstack/react-router": "^1.170.44",
     "@tanstack/react-start": "^1.169.1",
-    "libsql": "catalog:",
     "lucide-react": "^1.56.0",
     "next-themes": "catalog:",
     "react": "^19.3.0",

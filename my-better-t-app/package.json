@@ -16,11 +16,10 @@
     "staged": "vp staged",
     "hooks:setup": "vp config",
     "dev:web": "vp run --filter web dev:bare",
-    "db:generate": "vp run --filter @my-better-t-app/db db:generate",
     "deploy": "vp run --filter @my-better-t-app/infra deploy",
     "destroy": "vp run --filter @my-better-t-app/infra destroy",
-    "env:generate": "varlock codegen --path ./apps/web/ && varlock codegen --path ./packages/db/",
-    "postinstall": "varlock codegen --path ./apps/web/ && varlock codegen --path ./packages/db/"
+    "env:generate": "varlock codegen --path ./apps/web/",
+    "postinstall": "varlock codegen --path ./apps/web/"
   },
   "dependencies": {
     "zod": "catalog:"
