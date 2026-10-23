@@ -8,7 +8,9 @@ This Anchor program backs the web dashboard. Hosting and network deployment are 
 - The creator signs the creation transaction and funds the poll account.
 - Each voter signs a transaction and funds a permanent vote receipt. A receipt PDA uses the poll and voter address as seeds. Anchor's `init` constraint prevents repeat votes, including simultaneous submissions.
 - The receipt creation and counter increment happen atomically. Invalid choices, closed polls, and expired polls reject the entire transaction.
-- Only the creator can end a poll early. Questions and choices cannot be edited; polls cannot be reopened and receipts cannot be closed.
+- Only the creator can end a poll early or delete it at any time, including after its deadline. Both actions require the creator's wallet signature, enforced by the program.
+- Deletion is permanent: it closes voting and sets an on-chain deletion marker. Deleted polls disappear from all dashboard listings and their shared links show an unavailable message. The retained account prevents recreation at the same address with reset results. Blockchain history and vote receipts remain public; deletion does not reclaim account rent.
+- Questions and choices cannot be edited; polls cannot be reopened and receipts cannot be closed.
 - This is one **wallet**, one vote. It does not establish attendee identity or stop someone from using several wallets. There is no attendee allowlist in this version.
 - All poll details, votes, and results are public. The app reads confirmed account data every five seconds.
 
@@ -24,7 +26,7 @@ cargo test --locked
 cargo fmt --check
 ```
 
-These are native unit tests, not validator integration tests. The web tests also check Anchor discriminators, decoding limits, transaction packet size, stable QR links, wallet login requirements, receipt restoration, and live refresh recovery.
+These native tests exercise deletion account constraints and the handler (creator signatures, unauthorized deletion, and deletion of open/ended polls), but are not validator integration tests. The web tests also check Anchor discriminators, decoding limits, transaction packet size, stable QR links, wallet login requirements, receipt restoration, and live refresh recovery.
 
 ## Program build and configuration
 
@@ -40,7 +42,7 @@ anchor build
 
 The first build creates a local program keypair. `anchor keys sync` updates `declare_id!` and `Anchor.toml` to that address. The checked-in address is a development placeholder, not a deployed voting program. Keep the generated keypair and deployment authority private; `target/` is ignored.
 
-Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, and unauthorized closure, then deploy the executable to the selected network. Actual network deployment is intentionally left for a later step.
+Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. Actual network deployment is intentionally left for a later step.
 
 After a Devnet deployment, add the program address to `apps/web/.env`:
 
@@ -48,6 +50,8 @@ After a Devnet deployment, add the program address to `apps/web/.env`:
 VITE_SOLANA_PROGRAM_ID=<the deployed program address>
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
 ```
+
+The deletion feature adds a `deleted` boolean to the poll account layout and a `delete_poll` instruction. Build and deploy this program version before using the updated client. Existing deployments need an explicit account migration or a fresh program deployment; changing only the website does not add deletion to an older deployed program.
 
 Restart the dev server or rebuild the web app. These values are public build-time settings. An RPC URL used here must be safe to expose to browsers; do not include private credentials.
 

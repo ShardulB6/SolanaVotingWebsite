@@ -6,6 +6,7 @@ import {
   CAST_VOTE,
   CLOSE_POLL,
   CREATE_POLL,
+  DELETE_POLL,
   POLL_DISCRIMINATOR,
   RECEIPT_DISCRIMINATOR,
   decodePoll,
@@ -32,6 +33,7 @@ describe("Solana poll wire format", () => {
       ["global:create_poll", CREATE_POLL],
       ["global:cast_vote", CAST_VOTE],
       ["global:close_poll", CLOSE_POLL],
+      ["global:delete_poll", DELETE_POLL],
       ["account:Poll", POLL_DISCRIMINATOR],
       ["account:VoteReceipt", RECEIPT_DISCRIMINATOR],
     ] as const) {

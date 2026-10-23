@@ -31,6 +31,7 @@ pub mod husky_voting {
             options,
             votes: [0; MAX_OPTIONS],
             bump: ctx.bumps.poll,
+            deleted: false,
         });
         Ok(())
     }
@@ -38,7 +39,7 @@ pub mod husky_voting {
     pub fn cast_vote(ctx: Context<CastVote>, option: u8) -> Result<()> {
         let poll = &mut ctx.accounts.poll;
         require!(
-            !poll.closed && Clock::get()?.unix_timestamp < poll.closes_at,
+            !poll.deleted && !poll.closed && Clock::get()?.unix_timestamp < poll.closes_at,
             VotingError::PollClosed
         );
         require!(
@@ -59,6 +60,12 @@ pub mod husky_voting {
 
     pub fn close_poll(ctx: Context<ClosePoll>) -> Result<()> {
         ctx.accounts.poll.closed = true;
+        Ok(())
+    }
+
+    pub fn delete_poll(ctx: Context<DeletePoll>) -> Result<()> {
+        ctx.accounts.poll.closed = true;
+        ctx.accounts.poll.deleted = true;
         Ok(())
     }
 }
@@ -128,6 +135,15 @@ pub struct ClosePoll<'info> {
     pub creator: Signer<'info>,
 }
 
+// Keep a tombstone so this poll address cannot be recreated with reset results.
+// Receipts and the original on-chain history remain intact.
+#[derive(Accounts)]
+pub struct DeletePoll<'info> {
+    #[account(mut, has_one = creator, seeds = [b"poll", poll.creator.as_ref(), poll.nonce.as_ref()], bump = poll.bump)]
+    pub poll: Account<'info, Poll>,
+    pub creator: Signer<'info>,
+}
+
 #[account]
 pub struct Poll {
     pub creator: Pubkey,
@@ -140,6 +156,7 @@ pub struct Poll {
     pub options: Vec<String>,
     pub votes: [u64; MAX_OPTIONS],
     pub bump: u8,
+    pub deleted: bool,
 }
 
 impl Poll {
@@ -156,6 +173,7 @@ impl Poll {
         + 4
         + MAX_OPTIONS * (4 + 60)
         + MAX_OPTIONS * 8
+        + 1
         + 1;
 }
 
@@ -219,6 +237,7 @@ mod tests {
             options: vec!["Yes".into(), "No".into()],
             votes: [3, 2, 0, 0, 0, 0],
             bump: 254,
+            deleted: false,
         };
         let mut bytes = Vec::new();
         poll.try_serialize(&mut bytes).unwrap();
@@ -229,6 +248,83 @@ mod tests {
         assert_eq!(bytes[72], 0);
         assert!(bytes.len() <= Poll::SPACE);
         assert_eq!(VoteReceipt::SPACE, 74);
+    }
+
+    // Exercise Anchor's real account constraints and instruction handler without
+    // a validator; no clock or CPI is needed for deletion.
+    fn delete_as(signer: Pubkey, is_signer: bool, closed: bool) -> Result<Poll> {
+        let creator = Pubkey::new_from_array([1; 32]);
+        let nonce = [2; 16];
+        let (address, bump) =
+            Pubkey::find_program_address(&[b"poll", creator.as_ref(), nonce.as_ref()], &crate::ID);
+        let poll = Poll {
+            creator,
+            nonce,
+            created_at: 100,
+            closes_at: 200,
+            closed,
+            title: "Question?".into(),
+            description: "".into(),
+            options: vec!["Yes".into(), "No".into()],
+            votes: [3, 2, 0, 0, 0, 0],
+            bump,
+            deleted: false,
+        };
+        let mut data = vec![0; Poll::SPACE];
+        poll.try_serialize(&mut data.as_mut_slice())?;
+        let mut poll_lamports = 1;
+        let mut signer_lamports = 1;
+        let mut signer_data = [];
+        let system = anchor_lang::system_program::ID;
+        let infos = [
+            AccountInfo::new(
+                &address,
+                false,
+                true,
+                &mut poll_lamports,
+                &mut data,
+                &crate::ID,
+                false,
+                0,
+            ),
+            AccountInfo::new(
+                &signer,
+                is_signer,
+                false,
+                &mut signer_lamports,
+                &mut signer_data,
+                &system,
+                false,
+                0,
+            ),
+        ];
+        let mut remaining = infos.as_slice();
+        let mut bumps = DeletePollBumps::default();
+        let mut reallocs = std::collections::BTreeSet::new();
+        let mut accounts =
+            DeletePoll::try_accounts(&crate::ID, &mut remaining, &[], &mut bumps, &mut reallocs)?;
+        husky_voting::delete_poll(Context::new(&crate::ID, &mut accounts, &[], bumps))?;
+        accounts.exit(&crate::ID)?;
+        let result = Poll::try_deserialize(&mut infos[0].try_borrow_data()?.as_ref());
+        result
+    }
+
+    #[test]
+    fn only_the_creator_can_delete_and_must_sign() {
+        let creator = Pubkey::new_from_array([1; 32]);
+        assert!(delete_as(Pubkey::new_unique(), true, false).is_err());
+        assert!(delete_as(creator, false, false).is_err());
+    }
+
+    #[test]
+    fn creator_can_delete_open_and_ended_polls_without_losing_receipts_or_results() {
+        for closed in [false, true] {
+            let poll = delete_as(Pubkey::new_from_array([1; 32]), true, closed).unwrap();
+            assert!(poll.deleted);
+            assert!(poll.closed);
+            assert_eq!(poll.votes, [3, 2, 0, 0, 0, 0]);
+            assert_eq!(poll.title, "Question?");
+        }
     }
 
     #[test]

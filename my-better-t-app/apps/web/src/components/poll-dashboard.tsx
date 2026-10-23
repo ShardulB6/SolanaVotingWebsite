@@ -25,7 +25,7 @@ export function PollDashboard({ user }: { user: AuthUser | null }) {
   const live = usePolls();
   const [tab, setTab] = useState<"mine" | "all">("mine");
   const [search, setSearch] = useState("");
-  const polls = live.data ?? [];
+  const polls = (live.data ?? []).filter((poll) => !poll.deleted);
   const mine = polls.filter((poll) => poll.creator === user?.address);
   const displayed = (tab === "mine" ? mine : polls).filter((poll) =>
     poll.title.toLowerCase().includes(search.toLowerCase()),

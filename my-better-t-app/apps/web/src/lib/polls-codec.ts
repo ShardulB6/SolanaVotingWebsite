@@ -7,6 +7,8 @@ export const CREATE_POLL = Buffer.from([182, 171, 112, 238, 6, 219, 14, 110]);
 export const CAST_VOTE = Buffer.from([20, 212, 15, 189, 69, 180, 69, 151]);
 export const CLOSE_POLL = Buffer.from([139, 213, 162, 65, 172, 150, 123, 67]);
 
+export const DELETE_POLL = Buffer.from([156, 80, 237, 248, 65, 44, 143, 152]);
+
 export type Poll = {
   address: string;
   creator: string;
@@ -14,6 +16,7 @@ export type Poll = {
   createdAt: number;
   closesAt: number;
   closed: boolean;
+  deleted: boolean;
   title: string;
   description: string;
   options: string[];
@@ -122,6 +125,7 @@ export function decodePoll(address: string, data: Uint8Array): Poll {
   const options = Array.from({ length: count }, () => reader.string(60));
   const votes = Array.from({ length: 6 }, () => reader.integer());
   reader.u8(); // PDA bump
+  const deleted = reader.u8() !== 0;
   return {
     address,
     creator,
@@ -129,6 +133,7 @@ export function decodePoll(address: string, data: Uint8Array): Poll {
     createdAt,
     closesAt,
     closed,
+    deleted,
     title,
     description,
     options,
@@ -160,5 +165,5 @@ export function receiptAddress(program: PublicKey, poll: PublicKey, voter: Publi
 
 export const totalVotes = (poll: Poll) => poll.votes.reduce((sum, votes) => sum + votes, 0);
 export const pollIsOpen = (poll: Poll, now = Date.now() / 1000) =>
-  !poll.closed && now < poll.closesAt;
+  !poll.deleted && !poll.closed && now < poll.closesAt;
 export const shortAddress = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`;

@@ -19,10 +19,11 @@ import {
   Radio,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Vote,
 } from "lucide-react";
 import type { AuthUser } from "../lib/auth";
-import { castVote, closePoll, explorerUrl, programId, votingError } from "../lib/polls";
+import { castVote, closePoll, deletePoll, explorerUrl, programId, votingError } from "../lib/polls";
 import { pollIsOpen, shortAddress, totalVotes, type Poll } from "../lib/polls-codec";
 import { usePoll, useReceipt } from "../lib/use-polls";
 import { useSolanaWallets } from "../lib/wallet";
@@ -31,6 +32,8 @@ import { NetworkNotice, VotingShell, WalletGate, actionClass, panelClass } from 
 export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | null }) {
   const live = usePoll(pollId);
   const [presenting, setPresenting] = useState(false);
+  const [deletedId, setDeletedId] = useState<string | null>(null);
+  const deleted = deletedId === pollId || !!live.data?.deleted;
   return (
     <VotingShell user={user} section="poll">
       <div
@@ -50,7 +53,7 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
           </Button>
         </div>
         {!programId && <NetworkNotice />}
-        {live.error && (
+        {live.error && !deleted && (
           <div
             role="alert"
             className="mb-5 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-800"
@@ -66,7 +69,7 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
             <LoaderCircle className="size-5 animate-spin" /> Loading poll from Solana…
           </div>
         )}
-        {live.data && (
+        {live.data && !deleted && (
           <PollContent
             key={pollId}
             poll={live.data}
@@ -74,7 +77,23 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
             presenting={presenting}
             error={!!live.error}
             refresh={live.refresh}
+            onDeleted={() => {
+              setDeletedId(pollId);
+              live.refresh();
+            }}
           />
+        )}
+        {(deleted || (programId && !live.loading && !live.data && !live.error)) && (
+          <div role="status" className="py-16 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {deleted ? "Poll deleted" : "Poll unavailable"}
+            </h1>
+            <p className="mt-3 text-sm text-stone-500">
+              {deleted
+                ? "This poll has been removed. Voting and sharing are no longer available."
+                : "This poll may have been deleted, or the link may be incorrect."}
+            </p>
+          </div>
         )}
         {!live.loading && !live.data && !live.error && !programId && (
           <p className="py-12 text-center text-sm text-stone-500">
@@ -92,12 +111,14 @@ function PollContent({
   presenting,
   error: connectionError,
   refresh,
+  onDeleted,
 }: {
   poll: Poll;
   user: AuthUser | null;
   presenting: boolean;
   error: boolean;
   refresh: () => void;
+  onDeleted: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -235,8 +256,15 @@ function PollContent({
               </time>
             </p>
           </div>
-          {!presenting && user?.address === poll.creator && open && (
-            <ClosePollButton poll={poll} user={user} refresh={refresh} />
+          {!presenting && user?.address === poll.creator && (
+            <CreatorPollControls
+              key={`${poll.address}:${user.address}`}
+              poll={poll}
+              user={user}
+              open={open}
+              refresh={refresh}
+              onDeleted={onDeleted}
+            />
           )}
         </div>
       </div>
@@ -526,31 +554,49 @@ function VotingForm({
   );
 }
 
-function ClosePollButton({
+function CreatorPollControls({
   poll,
   user,
+  open,
   refresh,
+  onDeleted,
 }: {
   poll: Poll;
   user: AuthUser;
+  open: boolean;
   refresh: () => void;
+  onDeleted: () => void;
 }) {
   const { wallet } = useTransactionWallet(user.address);
-  const [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState<"close" | "delete" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [signature, setSignature] = useState("");
-  async function end() {
+  function choose(action: "close" | "delete" | null) {
+    setConfirm(action);
+    setError("");
+    setSignature("");
+  }
+  async function submit() {
+    if (!confirm) return;
     if (!wallet) {
-      setError("Reconnect the creator’s wallet to end voting.");
+      setError(
+        `Reconnect the creator’s wallet to ${confirm === "delete" ? "delete this poll" : "end voting"}.`,
+      );
       return;
     }
     setBusy(true);
     setError("");
+    setSignature("");
     try {
-      await closePoll(poll.address, wallet, user.address, setSignature);
-      refresh();
-      setConfirm(false);
+      if (confirm === "delete") {
+        await deletePoll(poll.address, wallet, user.address, setSignature);
+        onDeleted();
+      } else {
+        await closePoll(poll.address, wallet, user.address, setSignature);
+        refresh();
+      }
+      setConfirm(null);
     } catch (cause) {
       setError(votingError(cause));
     } finally {
@@ -563,30 +609,50 @@ function ClosePollButton({
       {confirm ? (
         <>
           <p className="mb-3 text-xs leading-5 text-stone-500">
-            End voting now? This can’t be undone.
+            {confirm === "delete"
+              ? "Delete this poll? It will disappear from the dashboard, its link will stop working, and voting will stop immediately. This can’t be undone. Blockchain history stays public."
+              : "End voting now? This can’t be undone."}
           </p>
-          <div className="flex gap-2">
-            <Button variant="destructive" disabled={busy} className="rounded-lg" onClick={end}>
-              {busy && <LoaderCircle className="mr-2 size-3 animate-spin" />} End voting
+          <div className="flex flex-wrap gap-2">
+            <Button variant="destructive" disabled={busy} className="rounded-lg" onClick={submit}>
+              {busy && <LoaderCircle className="mr-2 size-3 animate-spin" />}
+              {busy
+                ? signature
+                  ? "Confirming…"
+                  : "Approve in wallet…"
+                : confirm === "delete"
+                  ? "Delete permanently"
+                  : "End voting"}
             </Button>
             <Button
               variant="ghost"
               disabled={busy}
               className="rounded-lg"
-              onClick={() => setConfirm(false)}
+              onClick={() => choose(null)}
             >
-              Keep open
+              {confirm === "delete" ? "Keep poll" : "Keep open"}
             </Button>
           </div>
         </>
       ) : (
-        <Button
-          variant="outline"
-          className="w-full rounded-lg text-xs"
-          onClick={() => setConfirm(true)}
-        >
-          End voting early
-        </Button>
+        <div className="space-y-2">
+          {open && (
+            <Button
+              variant="outline"
+              className="w-full rounded-lg text-xs"
+              onClick={() => choose("close")}
+            >
+              End voting early
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            className="w-full gap-2 rounded-lg border-red-100 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+            onClick={() => choose("delete")}
+          >
+            <Trash2 className="size-3.5" /> Delete poll
+          </Button>
+        </div>
       )}
       {error && (
         <p role="alert" className="mt-3 text-xs text-red-700">
