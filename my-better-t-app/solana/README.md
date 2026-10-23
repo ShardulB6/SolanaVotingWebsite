@@ -42,7 +42,7 @@ anchor build
 
 The first build creates a local program keypair. `anchor keys sync` updates `declare_id!` and `Anchor.toml` to that address. The checked-in address is a development placeholder, not a deployed voting program. Keep the generated keypair and deployment authority private; `target/` is ignored.
 
-Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. Actual network deployment is intentionally left for a later step.
+Before real use, run validator integration tests for create, vote, duplicate vote, expired poll, invalid option, unauthorized closure/deletion, and voting after deletion, then deploy the executable to the selected network. For the Devnet deployment commands and matching website configuration, follow the [hosting guide](../../README.md#host-the-project).
 
 After a Devnet deployment, add the program address to `apps/web/.env`:
 
