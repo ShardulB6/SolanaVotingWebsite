@@ -36,7 +36,7 @@ pnpm run dev:web
 
 Open [http://localhost:3001](http://localhost:3001) in your browser to see the fullstack application.
 
-Local web development does not require a database. To use port 4000 and allow access from other devices, run:
+Local web development uses an automatically initialized SQLite file; hosted voting uses Cloudflare D1 through Drizzle. See [hybrid voting](apps/web/HYBRID_VOTING.md) for D1, tunnels, and result verification. To use port 4000 and allow access from other devices, run:
 
 ```bash
 pnpm --filter web run dev:bare --host 0.0.0.0 --port 4000 --strictPort
@@ -61,7 +61,7 @@ The implementation is split across:
 - `apps/web/src/lib/auth.ts`: validated TanStack server functions.
 - `apps/web/src/lib/session.server.ts`: server verification and encrypted sessions. It reads the secret from the runtime environment so it is never bundled into client assets.
 
-For production, set a separate `AUTH_SESSION_SECRET` in the deployment environment and `NODE_ENV=production`, and serve over HTTPS. Alchemy binds the secret to the Cloudflare Worker as a secret environment variable. Local `dev:bare` and `serve` load the app schema through Varlock; other Node server launch commands must also load the schema or inject the runtime variables. Authentication establishes wallet ownership; poll creation and voting require separate signed Solana transactions. The voting program enforces its rules independently of the website session.
+For production, set a separate `AUTH_SESSION_SECRET` in the deployment environment and `NODE_ENV=production`, and serve over HTTPS. Alchemy binds the secret to the Cloudflare Worker as a secret environment variable. Local `dev:bare` and `serve` load the app schema through Varlock; other Node server launch commands must also load the schema or inject the runtime variables. Authentication establishes wallet ownership. Voting requires a separate free wallet message; only publishing final results uses a Solana transaction. The database enforces one vote per wallet.
 
 Run the authentication tests with:
 
@@ -71,16 +71,16 @@ pnpm exec vp test apps/web/src/lib/session.test.ts
 
 ## Voting dashboard
 
-Successful wallet sign-in opens `/dashboard`. Users can browse their polls and community polls, search questions, and create public polls with 2–6 options and a closing time. Each poll has a shareable `/polls/<address>` page, a QR code, presentation mode, and confirmed on-chain results that refresh every five seconds. Phone users stay on the poll during wallet sign-in and approve a separate voting transaction. Existing vote receipts restore the submitted state after reload.
+Successful wallet sign-in opens `/dashboard`. Users create public polls with 2–6 choices, share stable QR links, and follow counts that refresh every five seconds. Polls and signed ballots are stored in Cloudflare D1 through Drizzle. Voters need no SOL: they sign a message, and the database atomically permits one final ballot per wallet. Creators can close or delete polls using their authenticated session.
 
-The program source is in [`solana/`](./solana/README.md). It enforces one final vote per wallet per poll, immutable choices, deadlines, and creator-only early closure. Polls are open to all wallets; this does not enforce one vote per attendee.
+After closure or expiry, the creator can publish the final results hash with one small Solana Devnet Memo transaction. Anyone can download the signed results record and verify its signatures, tally, and hash against the on-chain transaction. Solana commits to the published record; duplicate prevention and collecting the votes depend on the application and database. Multiple wallets are still possible for one person.
 
-Network and site deployment are intentionally pending. Until `VITE_SOLANA_PROGRAM_ID` points to a deployed Devnet program, the dashboard shows a setup notice and disables creation. Creators can end voting early or permanently delete open or ended polls after confirming in their wallet. Deleted polls disappear from the app and stop accepting votes; their blockchain history remains public. No votes are stored in a browser or database. See the [program setup notes](./solana/README.md) for build prerequisites, public RPC settings, QR origins, and verification limits.
+See [free voting with D1, Drizzle, and Solana](apps/web/HYBRID_VOTING.md) for setup, migration ownership, tunnel access, trust boundaries, cost behavior, and independent verification. The earlier Anchor program remains in `solana/` as a separate implementation; the web client no longer needs its program ID, and older on-chain polls are not migrated automatically.
 
 Run the web tests with:
 
 ```bash
-pnpm exec vp test apps/web/src/lib/session.test.ts apps/web/src/lib/polls-codec.test.ts apps/web/src/lib/use-polls.test.tsx apps/web/src/components/poll-room.test.tsx
+pnpm exec vp test
 ```
 
 ## UI Customization

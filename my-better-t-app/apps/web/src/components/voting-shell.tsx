@@ -4,7 +4,6 @@ import { Button } from "@my-better-t-app/ui/components/button";
 import { Card, CardContent } from "@my-better-t-app/ui/components/card";
 import {
   ArrowUpRight,
-  CircleHelp,
   LayoutDashboard,
   Leaf,
   LoaderCircle,
@@ -81,7 +80,7 @@ export function VotingShell({
           <ShieldCheck className="mb-3 size-5 text-[#536c3d]" />
           <p className="text-sm font-semibold">Every voice. Verifiable.</p>
           <p className="mt-2 text-xs leading-5 text-stone-500">
-            Votes are recorded on Solana. Your wallet is your identity.
+            Vote with a free wallet signature. Final results can be verified on Solana.
           </p>
           <a
             href="https://solana.com/docs"
@@ -230,23 +229,5 @@ export function WalletGate({
         </p>
       </CardContent>
     </Card>
-  );
-}
-
-export function NetworkNotice() {
-  return (
-    <div
-      role="status"
-      className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50 p-4 text-xs leading-5 text-amber-900"
-    >
-      <CircleHelp className="mt-0.5 size-4 shrink-0" />
-      <div>
-        <p className="font-semibold">On-chain voting isn’t connected yet</p>
-        <p className="mt-1">
-          The poll program needs to be configured before polls can be created or votes recorded.
-          Your wallet sign-in is ready.
-        </p>
-      </div>
-    </div>
   );
 }

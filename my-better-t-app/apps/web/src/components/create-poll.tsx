@@ -7,7 +7,6 @@ import { Label } from "@my-better-t-app/ui/components/label";
 import { Textarea } from "@my-better-t-app/ui/components/textarea";
 import {
   ArrowLeft,
-  ArrowUpRight,
   Check,
   CircleHelp,
   ListChecks,
@@ -19,16 +18,15 @@ import {
   Wallet,
 } from "lucide-react";
 import type { AuthUser } from "../lib/auth";
-import { createPoll, explorerUrl, programId, votingError } from "../lib/polls";
+import { createPoll, votingError } from "../lib/polls";
 import { validatePoll } from "../lib/polls-codec";
-import { useSolanaWallets } from "../lib/wallet";
-import { NetworkNotice, VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
+import { VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
 
 export function CreatePoll({ user }: { user: AuthUser | null }) {
   return (
     <VotingShell user={user} section="create">
       {user ? (
-        <CreatePollForm user={user} />
+        <CreatePollForm />
       ) : (
         <div className="py-12">
           <WalletGate
@@ -41,37 +39,18 @@ export function CreatePoll({ user }: { user: AuthUser | null }) {
   );
 }
 
-function CreatePollForm({ user }: { user: AuthUser }) {
+function CreatePollForm() {
   const navigate = useNavigate();
-  const wallets = useSolanaWallets();
   const nonce = useRef<Uint8Array | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [options, setOptions] = useState(["", ""]);
   const [duration, setDuration] = useState(24);
-  const [walletName, setWalletName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [signature, setSignature] = useState("");
   const [error, setError] = useState("");
-  const transactionWallets = wallets.filter(
-    (wallet) =>
-      "solana:signTransaction" in wallet.features ||
-      "solana:signAndSendTransaction" in wallet.features,
-  );
-  const wallet =
-    transactionWallets.find((candidate) => candidate.name === walletName) ??
-    transactionWallets.find((candidate) =>
-      candidate.accounts.some((account) => account.address === user.address),
-    ) ??
-    (transactionWallets.length === 1 ? transactionWallets[0] : undefined);
-
   async function submit(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!wallet) {
-      setError("Select or reconnect a Solana wallet that supports transactions.");
-      return;
-    }
     const input = {
       title: title.trim(),
       description: description.trim(),
@@ -85,10 +64,9 @@ function CreatePollForm({ user }: { user: AuthUser }) {
       return;
     }
     setBusy(true);
-    setSignature("");
     try {
       nonce.current ??= crypto.getRandomValues(new Uint8Array(16));
-      const address = await createPoll(input, nonce.current, wallet, user.address, setSignature);
+      const address = await createPoll(input, nonce.current);
       await navigate({ to: "/polls/$pollId", params: { pollId: address } });
     } catch (cause) {
       setError(votingError(cause));
@@ -111,7 +89,6 @@ function CreatePollForm({ user }: { user: AuthUser }) {
           One question. A few choices. A conversation worth having.
         </p>
       </div>
-      {!programId && <NetworkNotice />}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <Card className={panelClass}>
           <CardContent className="p-6 sm:p-8">
@@ -234,29 +211,11 @@ function CreatePollForm({ user }: { user: AuthUser }) {
                     ))}
                   </div>
                 </div>
-                {transactionWallets.length > 1 && (
-                  <div>
-                    <Label htmlFor="create-wallet">Transaction wallet</Label>
-                    <select
-                      id="create-wallet"
-                      value={wallet?.name ?? ""}
-                      onChange={(event) => setWalletName(event.target.value)}
-                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-white px-3 text-sm"
-                    >
-                      <option value="" disabled>
-                        Select your wallet
-                      </option>
-                      {transactionWallets.map((candidate) => (
-                        <option key={candidate.name}>{candidate.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </fieldset>
               <div className="border-t border-stone-100 pt-6">
                 <Button
                   type="submit"
-                  disabled={busy || !programId}
+                  disabled={busy}
                   className={`${actionClass} w-full bg-[#263d2d] text-white hover:bg-[#354e3c] sm:w-auto`}
                 >
                   {busy ? (
@@ -264,31 +223,17 @@ function CreatePollForm({ user }: { user: AuthUser }) {
                   ) : (
                     <Plus className="size-4" />
                   )}
-                  {busy
-                    ? signature
-                      ? "Confirming on Solana…"
-                      : "Approve in your wallet…"
-                    : "Create poll on Solana"}
+                  {busy ? "Creating poll…" : "Create poll"}
                 </Button>
                 <p className="mt-3 text-[11px] leading-5 text-stone-400">
-                  Your wallet will ask you to approve. You’ll need Devnet SOL for transaction fees
-                  and poll storage.
+                  Creating polls and voting are free. Only publishing final results on Solana needs
+                  Devnet SOL.
                 </p>
               </div>
               {error && (
                 <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm leading-6 text-red-800">
                   {error}
                 </p>
-              )}
-              {signature && (
-                <a
-                  href={explorerUrl(signature, true)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-[#5e744a] underline underline-offset-4"
-                >
-                  View submitted transaction <ArrowUpRight className="size-3" />
-                </a>
               )}
             </form>
           </CardContent>
@@ -301,7 +246,7 @@ function CreatePollForm({ user }: { user: AuthUser }) {
               </span>
               <h2 className="text-base font-semibold">From question to QR.</h2>
               <p className="mt-3 text-xs leading-6 text-[#748065]">
-                Once your poll is on chain, you’ll get a QR code to share. Put it on the big screen
+                Once your poll is created, you’ll get a QR code to share. Put it on the big screen
                 and let the room do the rest.
               </p>
             </CardContent>
@@ -316,12 +261,12 @@ function CreatePollForm({ user }: { user: AuthUser }) {
               {
                 icon: ListChecks,
                 title: "One wallet, one vote",
-                text: "Votes are final. The program prevents the same wallet from voting twice.",
+                text: "Votes are final. The database prevents the same wallet from voting twice.",
               },
               {
                 icon: ShieldCheck,
                 title: "Public and verifiable",
-                text: "Anyone can check the results on Solana. No hidden counting.",
+                text: "Download signed ballots and verify the final results hash on Solana.",
               },
             ].map(({ icon: Icon, title: heading, text }) => (
               <div key={heading} className="flex gap-3">

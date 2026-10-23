@@ -1,127 +1,157 @@
-import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { Buffer } from "buffer";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { DELETE_POLL, POLL_DISCRIMINATOR, pollAddress, pollIsOpen } from "./polls-codec";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SolanaWallet } from "./wallet";
 
-const program = new PublicKey("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkgMQHGfXXGY");
-const creator = new PublicKey(new Uint8Array(32).fill(1));
-const nonce = new Uint8Array(16).fill(2);
-const address = pollAddress(program, creator, nonce);
-let polls: typeof import("./polls");
+const api = vi.hoisted(() => ({
+  insertPoll: vi.fn(),
+  requestVote: vi.fn(),
+  submitVote: vi.fn(),
+  changePoll: vi.fn(),
+  readResults: vi.fn(),
+  recordAnchor: vi.fn(),
+}));
+vi.mock("./voting-api", () => ({
+  ...api,
+  listPolls: vi.fn(),
+  readPoll: vi.fn(),
+  readReceipt: vi.fn(),
+}));
+import { castVote, closePoll, createPoll, deletePoll, publishResults } from "./polls";
+import { MEMO_PROGRAM } from "./solana";
+import { anchorMemo, resultsDigest, type ResultsRecord } from "./results";
 
-// Matches Anchor's serialized Poll, including its trailing deletion marker.
-function pollAccount(deleted: boolean) {
-  const string = (value: string) => {
-    const size = Buffer.alloc(4);
-    size.writeUInt32LE(Buffer.byteLength(value));
-    return Buffer.concat([size, Buffer.from(value)]);
-  };
-  const times = Buffer.alloc(16);
-  times.writeBigInt64LE(100n);
-  times.writeBigInt64LE(4102444800n, 8);
-  const count = Buffer.alloc(4);
-  count.writeUInt32LE(2);
-  const bump = PublicKey.findProgramAddressSync(
-    [Buffer.from("poll"), creator.toBuffer(), Buffer.from(nonce)],
-    program,
-  )[1];
+const key = Keypair.generate();
+const account = { address: key.publicKey.toBase58(), chains: ["solana:devnet"] };
+const id = "01".repeat(16);
+const message = "signed ballot message";
+function wallet(features: Record<string, unknown> = {}) {
   return {
-    owner: program,
-    executable: false,
-    lamports: 1,
-    rentEpoch: 0,
-    data: Buffer.concat([
-      POLL_DISCRIMINATOR,
-      creator.toBuffer(),
-      Buffer.from(nonce),
-      times,
-      Buffer.from([0]),
-      string("Question?"),
-      string(""),
-      count,
-      string("Yes"),
-      string("No"),
-      Buffer.alloc(48),
-      Buffer.from([bump, Number(deleted)]),
-    ]),
-  };
+    features: {
+      "standard:connect": { connect: vi.fn().mockResolvedValue({ accounts: [account] }) },
+      ...features,
+    },
+  } as unknown as SolanaWallet;
 }
-
-beforeAll(async () => {
-  vi.stubEnv("VITE_SOLANA_PROGRAM_ID", program.toBase58());
-  polls = await import("./polls");
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
-afterEach(() => vi.restoreAllMocks());
-afterAll(() => vi.unstubAllEnvs());
 
-describe("on-chain poll deletion", () => {
-  it("excludes deleted polls from listings and counts", async () => {
-    vi.spyOn(Connection.prototype, "getProgramAccounts").mockResolvedValue([
-      { pubkey: address, account: pollAccount(false) },
-      { pubkey: address, account: pollAccount(true) },
+describe("hybrid voting client", () => {
+  it("creates and manages polls through the authenticated API without a transaction", async () => {
+    const input = {
+      title: "Question?",
+      description: "",
+      options: ["Yes", "No"],
+      closesAt: 4102444800,
+    };
+    await createPoll(input, new Uint8Array(16).fill(1));
+    expect(api.insertPoll).toHaveBeenCalledWith({ data: { id, input } });
+    await closePoll(id);
+    await deletePoll(id);
+    expect(api.changePoll.mock.calls.map(([request]) => request.data.action)).toEqual([
+      "close",
+      "delete",
     ]);
-    const listed = await polls.fetchPolls();
-    expect(listed).toHaveLength(1);
-    expect(listed[0].deleted).toBe(false);
-    expect(pollIsOpen({ ...listed[0], deleted: true })).toBe(false);
   });
-
-  it("returns unavailable for deleted and missing polls while loading active polls", async () => {
-    vi.spyOn(Connection.prototype, "getAccountInfo")
-      .mockResolvedValueOnce(pollAccount(false))
-      .mockResolvedValueOnce(pollAccount(true))
-      .mockResolvedValueOnce(null);
-    expect((await polls.fetchPoll(address.toBase58()))?.title).toBe("Question?");
-    expect(await polls.fetchPoll(address.toBase58())).toBeNull();
-    expect(await polls.fetchPoll(address.toBase58())).toBeNull();
+  it("only signs a free wallet message and submits its signature", async () => {
+    api.requestVote.mockResolvedValue(message);
+    const signMessage = vi.fn(async () => [
+      { signedMessage: Buffer.from(message), signature: new Uint8Array(64).fill(1) },
+    ]);
+    const send = vi.spyOn(Connection.prototype, "sendRawTransaction");
+    const getBalance = vi.spyOn(Connection.prototype, "getBalance");
+    await castVote(id, 1, wallet({ "solana:signMessage": { signMessage } }), account.address);
+    expect(signMessage).toHaveBeenCalledWith({
+      account,
+      message: new TextEncoder().encode(message),
+    });
+    expect(api.submitVote).toHaveBeenCalledWith({
+      data: { poll: id, message, signature: expect.any(String) },
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(getBalance).not.toHaveBeenCalled();
   });
-
-  it("sends the deletion instruction on Devnet with the creator's signature and confirms it", async () => {
+  it("rejects unsupported wallets, account mismatches, and changed signed messages", async () => {
+    await expect(castVote(id, 0, wallet(), account.address)).rejects.toThrow("signing messages");
+    api.requestVote.mockResolvedValue(message);
+    const signMessage = vi.fn(async () => [
+      { signedMessage: Buffer.from("changed"), signature: new Uint8Array(64) },
+    ]);
+    await expect(
+      castVote(id, 0, wallet({ "solana:signMessage": { signMessage } }), account.address),
+    ).rejects.toThrow("requested vote");
+    await expect(
+      castVote(
+        id,
+        0,
+        wallet({ "solana:signMessage": { signMessage } }),
+        SystemProgram.programId.toBase58(),
+      ),
+    ).rejects.toThrow("Switch your wallet");
+    expect(api.submitVote).not.toHaveBeenCalled();
+  });
+  it("publishes one creator-paid Memo and retries database recording without a new transaction", async () => {
+    const record: ResultsRecord = {
+      format: "huskyvote-results-v1",
+      poll: {
+        id,
+        creator: account.address,
+        title: "Question?",
+        description: "",
+        options: ["Yes", "No"],
+        createdAt: 100,
+        closesAt: 200,
+      },
+      counts: [0, 0],
+      ballots: [],
+    };
+    const digest = await resultsDigest(record);
+    api.readResults.mockResolvedValue({ record, digest, anchorSignature: null });
+    const stored = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => stored.get(key),
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      },
+    });
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: SystemProgram.programId.toBase58(),
       lastValidBlockHeight: 42,
     });
+    vi.spyOn(Connection.prototype, "getSignatureStatuses").mockResolvedValue({
+      context: { slot: 1 },
+      value: [{ slot: 1, confirmations: 1, err: null, confirmationStatus: "confirmed" }],
+    });
     const send = vi
       .spyOn(Connection.prototype, "sendRawTransaction")
       .mockResolvedValue("signature");
-    const confirm = vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
       context: { slot: 1 },
       value: { err: null },
     });
-    const account = { address: creator.toBase58(), chains: ["solana:devnet"] };
     const signTransaction = vi.fn(async ({ transaction }: { transaction: Uint8Array }) => [
       { signedTransaction: transaction },
     ]);
-    const wallet = {
-      features: {
-        "standard:connect": { connect: vi.fn().mockResolvedValue({ accounts: [account] }) },
-        "solana:signTransaction": { signTransaction },
-      },
-    } as unknown as SolanaWallet;
-    const onSubmitted = vi.fn();
-    expect(
-      await polls.deletePoll(address.toBase58(), wallet, creator.toBase58(), onSubmitted),
-    ).toBe("signature");
-    const request = signTransaction.mock.calls[0][0];
-    expect(request).toMatchObject({ account, chain: "solana:devnet" });
-    const instruction = Transaction.from(request.transaction).instructions[0];
-    expect(instruction.programId.equals(program)).toBe(true);
-    expect(instruction.data).toEqual(DELETE_POLL);
-    expect(instruction.keys).toEqual([
-      { pubkey: address, isSigner: false, isWritable: true },
-      // The creator is also the transaction fee payer, so is writable on the wire.
-      { pubkey: creator, isSigner: true, isWritable: true },
-    ]);
-    expect(send).toHaveBeenCalledOnce();
-    expect(onSubmitted).toHaveBeenCalledWith("signature");
-    expect(confirm).toHaveBeenCalledWith(
-      {
-        blockhash: SystemProgram.programId.toBase58(),
-        lastValidBlockHeight: 42,
-        signature: "signature",
-      },
-      "confirmed",
+    const hostWallet = wallet({ "solana:signTransaction": { signTransaction } });
+    api.recordAnchor
+      .mockRejectedValueOnce(new Error("Temporary database failure"))
+      .mockResolvedValueOnce("signature");
+    await expect(publishResults(id, hostWallet, account.address, vi.fn())).rejects.toThrow(
+      "database",
     );
+    expect(stored.size).toBe(1);
+    await publishResults(id, hostWallet, account.address, vi.fn());
+    expect(send).toHaveBeenCalledOnce();
+    expect(stored.size).toBe(0);
+    const tx = Transaction.from(signTransaction.mock.calls[0][0].transaction);
+    expect(tx.feePayer?.equals(key.publicKey)).toBe(true);
+    expect(tx.instructions).toHaveLength(1);
+    expect(tx.instructions[0].programId.equals(MEMO_PROGRAM)).toBe(true);
+    expect(tx.instructions[0].data.toString()).toBe(anchorMemo(id, digest));
+    expect(api.recordAnchor).toHaveBeenCalledWith({ data: { poll: id, signature: "signature" } });
   });
 });

@@ -4,9 +4,14 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import "varlock/auto-load";
 
+export const database = Cloudflare.D1.Database("voting", {
+  migrations: "../../apps/web/migrations",
+});
+
 export const web = Cloudflare.Website.Vite("web", {
   rootDir: "../../apps/web",
   env: {
+    DB: database,
     AUTH_SESSION_SECRET: Config.Redacted("AUTH_SESSION_SECRET"),
     NODE_ENV: "production",
   },
@@ -27,10 +32,13 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
+    const db = yield* database;
     const webWorker = yield* web;
 
     return {
       web: webWorker.url,
+      databaseId: db.databaseId,
+      databaseName: db.databaseName,
     };
   }),
 );

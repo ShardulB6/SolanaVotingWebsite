@@ -6,12 +6,10 @@ import { Card, CardContent } from "@my-better-t-app/ui/components/card";
 import { Input } from "@my-better-t-app/ui/components/input";
 import {
   ArrowLeft,
-  ArrowUpRight,
   Check,
   CheckCheck,
   Clock3,
   Copy,
-  ExternalLink,
   LoaderCircle,
   Maximize,
   Minimize,
@@ -23,11 +21,21 @@ import {
   Vote,
 } from "lucide-react";
 import type { AuthUser } from "../lib/auth";
-import { castVote, closePoll, deletePoll, explorerUrl, programId, votingError } from "../lib/polls";
+import {
+  castVote,
+  closePoll,
+  deletePoll,
+  explorerUrl,
+  votingError,
+  publishResults,
+  downloadResults,
+  downloadJson,
+} from "../lib/polls";
+import { checkAnchor } from "../lib/voting-api";
 import { pollIsOpen, shortAddress, totalVotes, type Poll } from "../lib/polls-codec";
 import { usePoll, useReceipt } from "../lib/use-polls";
 import { useSolanaWallets } from "../lib/wallet";
-import { NetworkNotice, VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
+import { VotingShell, WalletGate, actionClass, panelClass } from "./voting-shell";
 
 export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | null }) {
   const live = usePoll(pollId);
@@ -52,7 +60,6 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
             {presenting ? "Exit presentation" : "Present poll"}
           </Button>
         </div>
-        {!programId && <NetworkNotice />}
         {live.error && !deleted && (
           <div
             role="alert"
@@ -66,7 +73,7 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
         )}
         {live.loading && !live.data && (
           <div role="status" className="flex items-center gap-3 py-20 text-sm text-stone-500">
-            <LoaderCircle className="size-5 animate-spin" /> Loading poll from Solana…
+            <LoaderCircle className="size-5 animate-spin" /> Loading poll…
           </div>
         )}
         {live.data && !deleted && (
@@ -83,7 +90,7 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
             }}
           />
         )}
-        {(deleted || (programId && !live.loading && !live.data && !live.error)) && (
+        {(deleted || (!live.loading && !live.data && !live.error)) && (
           <div role="status" className="py-16 text-center">
             <h1 className="text-2xl font-semibold tracking-tight">
               {deleted ? "Poll deleted" : "Poll unavailable"}
@@ -94,11 +101,6 @@ export function PollRoom({ pollId, user }: { pollId: string; user: AuthUser | nu
                 : "This poll may have been deleted, or the link may be incorrect."}
             </p>
           </div>
-        )}
-        {!live.loading && !live.data && !live.error && !programId && (
-          <p className="py-12 text-center text-sm text-stone-500">
-            This poll will be available when on-chain voting is connected.
-          </p>
         )}
       </div>
     </VotingShell>
@@ -217,16 +219,9 @@ function PollContent({
               )}
               <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-5 text-[11px] text-stone-400">
                 <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="size-3.5" /> Counted on Solana
+                  <ShieldCheck className="size-3.5" /> Signed ballots · off-chain
                 </span>
-                <a
-                  className="inline-flex items-center gap-1 text-[#6e805a]"
-                  href={explorerUrl(poll.address)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Verify on Explorer <ArrowUpRight className="size-3" />
-                </a>
+                <span>Final results can be anchored on Solana</span>
               </div>
             </CardContent>
           </Card>
@@ -244,6 +239,7 @@ function PollContent({
         </div>
         <div className="space-y-5">
           <SharePoll poll={poll} open={open} />
+          {!open && <ResultPublication poll={poll} user={user} refresh={refresh} />}
           <div className="flex items-start gap-2 px-2 text-[11px] leading-6 text-stone-400">
             <Clock3 className="mt-1 size-3.5 shrink-0" />
             <p>
@@ -260,7 +256,6 @@ function PollContent({
             <CreatorPollControls
               key={`${poll.address}:${user.address}`}
               poll={poll}
-              user={user}
               open={open}
               refresh={refresh}
               onDeleted={onDeleted}
@@ -364,11 +359,12 @@ function SharePoll({ poll, open }: { poll: Poll; open: boolean }) {
   );
 }
 
-function useTransactionWallet(address?: string) {
-  const wallets = useSolanaWallets().filter(
-    (wallet) =>
-      "solana:signTransaction" in wallet.features ||
-      "solana:signAndSendTransaction" in wallet.features,
+function useTransactionWallet(address?: string, messages = false) {
+  const wallets = useSolanaWallets().filter((wallet) =>
+    messages
+      ? "solana:signMessage" in wallet.features
+      : "solana:signTransaction" in wallet.features ||
+        "solana:signAndSendTransaction" in wallet.features,
   );
   const [walletName, setWalletName] = useState("");
   const wallet =
@@ -392,11 +388,10 @@ function VotingForm({
   refresh: () => void;
 }) {
   const receipt = useReceipt(poll.address, user?.address);
-  const { wallets, wallet, setWalletName } = useTransactionWallet(user?.address);
+  const { wallets, wallet, setWalletName } = useTransactionWallet(user?.address, true);
   const [selected, setSelected] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [signature, setSignature] = useState("");
   const [error, setError] = useState("");
   async function vote() {
     if (selected === null || !user) return;
@@ -406,9 +401,8 @@ function VotingForm({
     }
     setBusy(true);
     setError("");
-    setSignature("");
     try {
-      await castVote(poll.address, selected, wallet, user.address, setSignature);
+      await castVote(poll.address, selected, wallet, user.address);
       setSubmitted(true);
       receipt.refresh();
       refresh();
@@ -441,7 +435,7 @@ function VotingForm({
               <Check className="size-5" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">Your voice is on chain.</h2>
+              <h2 className="text-lg font-semibold tracking-tight">Your vote is saved.</h2>
               <p className="mt-2 text-sm leading-6 text-stone-500">
                 You voted for{" "}
                 <span className="font-medium text-stone-800">
@@ -449,15 +443,21 @@ function VotingForm({
                 </span>
                 . Thanks for being part of the conversation.
               </p>
-              <a
-                href={explorerUrl(signature || poll.address, !!signature)}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex items-center gap-1 text-xs text-[#6f8455]"
-              >
-                {signature ? "View your transaction" : "View poll on Explorer"}{" "}
-                <ExternalLink className="size-3" />
-              </a>
+              <p className="mt-4 text-xs text-[#6f8455]">
+                Your signed ballot is saved. Final results can be anchored on Solana after voting
+                ends.
+              </p>
+              {receipt.data && (
+                <Button
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() =>
+                    downloadJson(`huskyvote-${poll.address}-receipt.json`, receipt.data)
+                  }
+                >
+                  Download signed receipt
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -526,28 +526,16 @@ function VotingForm({
           {receipt.loading
             ? "Checking your wallet…"
             : busy
-              ? signature
-                ? "Confirming on Solana…"
-                : "Approve in your wallet…"
+              ? "Sign the vote in your wallet…"
               : "Confirm vote"}
         </Button>
         <p className="mt-3 text-[11px] leading-5 text-stone-400">
-          Approve the vote in your wallet. You’ll need Devnet SOL for fees and your vote receipt.
+          Sign a free message in your wallet. No SOL is needed. One vote per wallet.
         </p>
         {error && (
           <p role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-sm leading-6 text-red-800">
             {error}
           </p>
-        )}
-        {signature && (
-          <a
-            href={explorerUrl(signature, true)}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex items-center gap-1 text-xs text-[#6f8455] underline"
-          >
-            Check submitted transaction <ArrowUpRight className="size-3" />
-          </a>
         )}
       </CardContent>
     </Card>
@@ -556,44 +544,32 @@ function VotingForm({
 
 function CreatorPollControls({
   poll,
-  user,
   open,
   refresh,
   onDeleted,
 }: {
   poll: Poll;
-  user: AuthUser;
   open: boolean;
   refresh: () => void;
   onDeleted: () => void;
 }) {
-  const { wallet } = useTransactionWallet(user.address);
   const [confirm, setConfirm] = useState<"close" | "delete" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [signature, setSignature] = useState("");
   function choose(action: "close" | "delete" | null) {
     setConfirm(action);
     setError("");
-    setSignature("");
   }
   async function submit() {
     if (!confirm) return;
-    if (!wallet) {
-      setError(
-        `Reconnect the creator’s wallet to ${confirm === "delete" ? "delete this poll" : "end voting"}.`,
-      );
-      return;
-    }
     setBusy(true);
     setError("");
-    setSignature("");
     try {
       if (confirm === "delete") {
-        await deletePoll(poll.address, wallet, user.address, setSignature);
+        await deletePoll(poll.address);
         onDeleted();
       } else {
-        await closePoll(poll.address, wallet, user.address, setSignature);
+        await closePoll(poll.address);
         refresh();
       }
       setConfirm(null);
@@ -616,13 +592,7 @@ function CreatorPollControls({
           <div className="flex flex-wrap gap-2">
             <Button variant="destructive" disabled={busy} className="rounded-lg" onClick={submit}>
               {busy && <LoaderCircle className="mr-2 size-3 animate-spin" />}
-              {busy
-                ? signature
-                  ? "Confirming…"
-                  : "Approve in wallet…"
-                : confirm === "delete"
-                  ? "Delete permanently"
-                  : "End voting"}
+              {busy ? "Saving…" : confirm === "delete" ? "Delete permanently" : "End voting"}
             </Button>
             <Button
               variant="ghost"
@@ -659,16 +629,105 @@ function CreatorPollControls({
           {error}
         </p>
       )}
-      {signature && (
-        <a
-          className="mt-3 block text-xs underline"
-          href={explorerUrl(signature, true)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Check transaction
-        </a>
-      )}
     </div>
+  );
+}
+
+function ResultPublication({
+  poll,
+  user,
+  refresh,
+}: {
+  poll: Poll;
+  user: AuthUser | null;
+  refresh: () => void;
+}) {
+  const { wallet } = useTransactionWallet(user?.address);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [signature, setSignature] = useState("");
+  const [verified, setVerified] = useState("");
+  async function run(action: "publish" | "download" | "verify") {
+    setBusy(true);
+    setError("");
+    try {
+      if (action === "download") await downloadResults(poll.address);
+      else if (action === "verify") {
+        const result = await checkAnchor({ data: poll.address });
+        setVerified(result.digest);
+      } else {
+        if (!wallet || !user) throw new Error("Reconnect the creator’s wallet to publish results.");
+        await publishResults(poll.address, wallet, user.address, setSignature);
+        refresh();
+      }
+    } catch (cause) {
+      setError(votingError(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className={panelClass}>
+      <CardContent className="space-y-3 p-5">
+        <h2 className="text-sm font-semibold">Final results on Solana</h2>
+        <p className="text-xs leading-5 text-stone-500">
+          {poll.anchorSignature
+            ? "The creator published a hash of these results on Solana Devnet."
+            : "Voting is free. The creator can publish the final results hash with one small Devnet transaction."}
+        </p>
+        <p className="text-[11px] leading-5 text-stone-500">
+          The database prevents repeat votes. The on-chain hash lets people check that the published
+          record has not changed.
+        </p>
+        {poll.anchorSignature ? (
+          <>
+            <a
+              href={explorerUrl(poll.anchorSignature, true)}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-xs underline"
+            >
+              View Solana transaction
+            </a>
+            <Button variant="outline" disabled={busy} onClick={() => run("verify")}>
+              Verify results and signatures
+            </Button>
+          </>
+        ) : (
+          user?.address === poll.creator && (
+            <Button disabled={busy} onClick={() => run("publish")}>
+              {busy
+                ? "Publishing…"
+                : signature
+                  ? "Retry confirming publication"
+                  : "Publish results on Solana"}
+            </Button>
+          )
+        )}
+        <Button variant="outline" disabled={busy} onClick={() => run("download")}>
+          Download results record
+        </Button>
+        {signature && !poll.anchorSignature && (
+          <a
+            href={explorerUrl(signature, true)}
+            target="_blank"
+            rel="noreferrer"
+            className="block text-xs underline"
+          >
+            Check submitted publication
+          </a>
+        )}
+        {verified && (
+          <p role="status" className="break-all text-xs text-green-800">
+            Verified against Solana. SHA-256: {verified}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-xs text-red-700">
+            {error}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

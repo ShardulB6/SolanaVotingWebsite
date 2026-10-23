@@ -61,3 +61,9 @@ dev-dist
 
 !.env.schema
 /src/env.ts
+
+# Local voting database
+.data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
