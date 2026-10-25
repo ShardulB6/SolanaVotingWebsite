@@ -1,5 +1,7 @@
 # HuskyVote · Solana Voting Website
 
+🏆 **Winner of the Solana track at Hacktoberfest Hack Day Toronto x HuskyHack.**
+
 HuskyVote is a community polling app for Hacktoberfest Hack Day Toronto x HuskyHack. Organizers create public polls, share a link or QR code, and present live results. Participants sign in with a Solana wallet and vote by signing a free message. After voting ends, the creator can publish a results hash on **Solana Devnet**.
 
 ## Features
