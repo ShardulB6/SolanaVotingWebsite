@@ -12,9 +12,9 @@ HuskyVote is a community polling app for Hacktoberfest Hack Day Toronto x HuskyH
 - Live results refreshed every five seconds, with signed ballot receipts restored after reload and available to download.
 - One final vote per wallet per poll, with creator-only early closure and permanent deletion markers.
 
-Signing in and voting sign messages; creating a poll and voting require no SOL. Polls and signed ballots are stored in Cloudflare D1 through Drizzle, with local SQLite available for Node development. Only publishing final results requires a creator-paid Solana transaction. Polls, votes, and results are public. One vote per wallet does not establish one vote per person. Deletion removes a poll from the app and stops voting while retaining its database marker and ballots; any published Solana transaction remains public.
+Signing in and voting sign messages; creating a poll and voting require no SOL. Polls and signed ballots are stored in SQLite through Drizzle. The hackathon site ran on a local SQLite database, and Cloudflare D1 is the supported hosted option. Only publishing final results requires a creator-paid Solana transaction. Polls, votes, and results are public. One vote per wallet does not establish one vote per person. Deletion removes a poll from the app and stops voting while retaining its database marker and ballots; any published Solana transaction remains public.
 
-The repository also retains the earlier Rust/Anchor voting program as a separate implementation. The current website does not call it or require a program deployment. Existing on-chain polls are not automatically migrated into D1; older poll URLs are unavailable in this client.
+The repository also retains the earlier Rust/Anchor voting program as a separate implementation. The current website does not call it or require a program deployment. Existing on-chain polls are not automatically migrated into the database; older poll URLs are unavailable in this client.
 
 ## How it works
 
@@ -68,7 +68,7 @@ Keep the host computer awake and both the app and `cloudflared` running. A Quick
 
 The website can be shared through Cloudflare Tunnel as described above or deployed to Cloudflare Workers with a D1 database. A Worker deployment has its own public HTTPS URL and does not need a tunnel or a running host computer. The current app requires no custom Solana program deployment. These are operator instructions; the repository does not automatically publish resources.
 
-For the separate legacy Anchor implementation, follow the [program setup and upgrade guide](./my-better-t-app/solana/README.md). Its existing accounts and deployment remain separate from the current D1 voting flow.
+For the separate legacy Anchor implementation, follow the [program setup and upgrade guide](./my-better-t-app/solana/README.md). Its existing accounts and deployment remain separate from the current database-backed voting flow.
 
 ### 1. Configure production settings
 
